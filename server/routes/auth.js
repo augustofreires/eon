@@ -193,7 +193,7 @@ router.get('/verify', async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const result = await query(
-      'SELECT id, email, name, role, status FROM users WHERE id = $1',
+      'SELECT id, email, username, role, is_active FROM users WHERE id = $1',
       [decoded.userId]
     );
 
@@ -203,7 +203,7 @@ router.get('/verify', async (req, res) => {
 
     const user = result.rows[0];
 
-    if (user.status !== 'active') {
+    if (!user.is_active) {
       return res.status(403).json({ error: 'Conta suspensa ou inativa' });
     }
 
@@ -212,7 +212,7 @@ router.get('/verify', async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: user.username,
         role: user.role
       }
     });
