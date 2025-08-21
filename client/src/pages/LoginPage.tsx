@@ -20,38 +20,27 @@ import {
   Person,
   PersonAdd
 } from '@mui/icons-material';
-import axios from 'axios';
-import toast from 'react-hot-toast';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { login, loading } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     try {
-      const response = await axios.post('/api/auth/login', {
-        email,
-        password
-      });
-
-      if (response.data.token) {
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        window.location.href = response.data.user.role === 'admin' ? '/admin' : '/dashboard';
-      }
+      await login(email, password, true); // isAdmin = true para login admin
+      navigate('/admin');
     } catch (error: any) {
       console.error('Erro no login:', error);
-      setError(error.response?.data?.error || 'Erro ao fazer login');
-      toast.error('Email ou senha incorretos');
-    } finally {
-      setLoading(false);
+      setError(error.response?.data?.error || 'Credenciais inválidas');
     }
   };
 
