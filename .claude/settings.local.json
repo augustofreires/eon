@@ -75,7 +75,8 @@
       "Bash(open http://localhost:3000/admin/access-link)",
       "Bash(open http://localhost:3000/forgot-password)",
       "WebFetch(domain:contabo.com)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "WebFetch(domain:afiliagreen.com.br)"
     ],
     "deny": [],
     "ask": []
