@@ -5,6 +5,242 @@ const DerivAPI = require('../utils/derivApi');
 
 const router = express.Router();
 
+// Listar todos os usuários
+router.get('/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT id, email, role, status as active, 
+             deriv_connected, created_at
+      FROM users 
+      WHERE role != 'admin'
+      ORDER BY created_at DESC
+    `);
+
+    const users = result.rows.map(user => ({
+      ...user,
+      active: user.active === 'active'
+    }));
+
+    res.json({
+      users,
+      total: users.length
+    });
+
+  } catch (error) {
+    console.error('Erro ao listar usuários:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Criar novo usuário
+router.post('/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { name, email, password, role = 'client' } = req.body;
+
+    // Validações
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres' });
+    }
+
+    if (!['client', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'Função deve ser client ou admin' });
+    }
+
+    // Verificar se email já existe
+    const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({ error: 'Este email já está em uso' });
+    }
+
+    // Hash da senha
+    const bcrypt = require('bcrypt');
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Criar usuário
+    const result = await query(`
+      INSERT INTO users (name, email, password, role, status, created_at) 
+      VALUES ($1, $2, $3, $4, 'active', CURRENT_TIMESTAMP) 
+      RETURNING id, name, email, role, status as active, created_at
+    `, [name, email, hashedPassword, role]);
+
+    const newUser = {
+      ...result.rows[0],
+      active: result.rows[0].active === 'active',
+      deriv_connected: false
+    };
+
+    res.status(201).json({
+      message: 'Usuário criado com sucesso',
+      user: newUser
+    });
+
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Obter dados de um usuário específico
+router.get('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(`
+      SELECT id, name, email, role, status as active, 
+             deriv_connected, created_at
+      FROM users 
+      WHERE id = $1 AND role != 'admin'
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = {
+      ...result.rows[0],
+      active: result.rows[0].active === 'active'
+    };
+
+    res.json({ user });
+
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Editar usuário
+router.put('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, role, password } = req.body;
+
+    // Validações
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Nome e email são obrigatórios' });
+    }
+
+    if (role && !['client', 'admin'].includes(role)) {
+      return res.status(400).json({ error: 'Função deve ser client ou admin' });
+    }
+
+    // Verificar se usuário existe
+    const existingUser = await query('SELECT id FROM users WHERE id = $1 AND role != $2', [id, 'admin']);
+    if (existingUser.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Verificar se email já está em uso por outro usuário
+    const emailCheck = await query('SELECT id FROM users WHERE email = $1 AND id != $2', [email, id]);
+    if (emailCheck.rows.length > 0) {
+      return res.status(400).json({ error: 'Este email já está em uso por outro usuário' });
+    }
+
+    let updateQuery = 'UPDATE users SET name = $1, email = $2';
+    let params = [name, email];
+    let paramCount = 2;
+
+    if (role) {
+      paramCount++;
+      updateQuery += `, role = $${paramCount}`;
+      params.push(role);
+    }
+
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Senha deve ter pelo menos 6 caracteres' });
+      }
+      
+      const bcrypt = require('bcrypt');
+      const hashedPassword = await bcrypt.hash(password, 10);
+      paramCount++;
+      updateQuery += `, password = $${paramCount}`;
+      params.push(hashedPassword);
+    }
+
+    paramCount++;
+    updateQuery += ` WHERE id = $${paramCount} RETURNING id, name, email, role, status as active, deriv_connected, created_at`;
+    params.push(id);
+
+    const result = await query(updateQuery, params);
+
+    const updatedUser = {
+      ...result.rows[0],
+      active: result.rows[0].active === 'active'
+    };
+
+    res.json({
+      message: 'Usuário atualizado com sucesso',
+      user: updatedUser
+    });
+
+  } catch (error) {
+    console.error('Erro ao editar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Deletar usuário
+router.delete('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se usuário existe e não é admin
+    const existingUser = await query('SELECT id, email FROM users WHERE id = $1 AND role != $2', [id, 'admin']);
+    if (existingUser.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Deletar relacionamentos primeiro (se existirem)
+    await query('DELETE FROM operations WHERE user_id = $1', [id]);
+    await query('DELETE FROM bank_records WHERE user_id = $1', [id]);
+    await query('DELETE FROM deriv_accounts WHERE user_id = $1', [id]);
+    
+    // Deletar usuário
+    await query('DELETE FROM users WHERE id = $1', [id]);
+
+    res.json({
+      message: 'Usuário deletado com sucesso',
+      email: existingUser.rows[0].email
+    });
+
+  } catch (error) {
+    console.error('Erro ao deletar usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Alterar status do usuário
+router.put('/users/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { active } = req.body;
+
+    if (typeof active !== 'boolean') {
+      return res.status(400).json({ error: 'Status deve ser true ou false' });
+    }
+
+    const status = active ? 'active' : 'inactive';
+    
+    await query(
+      'UPDATE users SET status = $1 WHERE id = $2 AND role != $3',
+      [status, id, 'admin']
+    );
+
+    res.json({
+      message: `Usuário ${active ? 'ativado' : 'desativado'} com sucesso`
+    });
+
+  } catch (error) {
+    console.error('Erro ao alterar status do usuário:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // Dashboard do admin
 router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
   try {
@@ -60,80 +296,7 @@ router.get('/dashboard', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// Configurações de markup Deriv
-router.get('/markup-settings', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    // Buscar configurações de markup
-    const result = await query(`
-      SELECT * FROM system_settings 
-      WHERE key IN ('deriv_app_id', 'markup_rate', 'markup_enabled')
-    `);
 
-    const settings = {};
-    result.rows.forEach(row => {
-      settings[row.key] = row.value;
-    });
-
-    res.json({
-      settings: {
-        deriv_app_id: settings.deriv_app_id || '',
-        markup_rate: settings.markup_rate || '0.02',
-        markup_enabled: settings.markup_enabled === 'true'
-      }
-    });
-
-  } catch (error) {
-    console.error('Erro ao buscar configurações de afiliado:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
-
-// Atualizar configurações de afiliado
-router.put('/affiliate-settings', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { deriv_app_id, deriv_affiliate_id, commission_rate, affiliate_enabled } = req.body;
-
-    // Validar dados
-    if (!deriv_app_id || !deriv_affiliate_id) {
-      return res.status(400).json({ error: 'ID do App e ID do Afiliado são obrigatórios' });
-    }
-
-    if (commission_rate < 0 || commission_rate > 1) {
-      return res.status(400).json({ error: 'Taxa de comissão deve estar entre 0 e 1' });
-    }
-
-    // Atualizar ou inserir configurações
-    const settings = [
-      { key: 'deriv_app_id', value: deriv_app_id },
-      { key: 'deriv_affiliate_id', value: deriv_affiliate_id },
-      { key: 'commission_rate', value: commission_rate.toString() },
-      { key: 'affiliate_enabled', value: affiliate_enabled.toString() }
-    ];
-
-    for (const setting of settings) {
-      await query(`
-        INSERT INTO system_settings (key, value, updated_at)
-        VALUES ($1, $2, CURRENT_TIMESTAMP)
-        ON CONFLICT (key) 
-        DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP
-      `, [setting.key, setting.value]);
-    }
-
-    res.json({
-      message: 'Configurações de afiliado atualizadas com sucesso',
-      settings: {
-        deriv_app_id,
-        deriv_affiliate_id,
-        commission_rate,
-        affiliate_enabled
-      }
-    });
-
-  } catch (error) {
-    console.error('Erro ao atualizar configurações de afiliado:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
 
 // Testar conexão com Deriv
 router.post('/test-deriv-connection', requireAdmin, async (req, res) => {
@@ -235,54 +398,6 @@ router.get('/bots/stats', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-// Relatório de afiliados/markup
-router.get('/affiliate/report', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { start_date, end_date } = req.query;
-
-    let dateFilter = '';
-    let params = [];
-
-    if (start_date && end_date) {
-      dateFilter = 'WHERE at.created_at BETWEEN $1 AND $2';
-      params = [start_date, end_date];
-    }
-
-    const report = await query(`
-      SELECT 
-        u.name as user_name,
-        u.email,
-        COUNT(at.id) as total_operations,
-        SUM(at.amount) as total_amount,
-        SUM(at.commission) as total_commission,
-        AVG(at.commission) as avg_commission
-      FROM affiliate_tracking at
-      INNER JOIN users u ON at.user_id = u.id
-      ${dateFilter}
-      GROUP BY u.id, u.name, u.email
-      ORDER BY total_commission DESC
-    `, params);
-
-    const summary = await query(`
-      SELECT 
-        COUNT(*) as total_tracking,
-        SUM(amount) as total_amount,
-        SUM(commission) as total_commission,
-        AVG(commission) as avg_commission
-      FROM affiliate_tracking at
-      ${dateFilter}
-    `, params);
-
-    res.json({
-      report: report.rows,
-      summary: summary.rows[0]
-    });
-
-  } catch (error) {
-    console.error('Erro ao buscar relatório de afiliados:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-  }
-});
 
 // Relatório de markup
 router.get('/markup-report', requireAdmin, async (req, res) => {
@@ -358,7 +473,7 @@ router.put('/settings', requireAdmin, async (req, res) => {
 
     await query(`
       UPDATE system_settings 
-      SET deriv_app_id = $1, deriv_app_token = $2, updated_at = NOW()
+      SET deriv_app_id = $1, deriv_app_token = $2, updated_at = CURRENT_TIMESTAMP
       WHERE id = 1
     `, [deriv_app_id, deriv_app_token]);
 
@@ -581,6 +696,252 @@ router.delete('/api-tokens/:token', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Erro ao deletar token:', error);
     res.status(500).json({ error: 'Erro ao deletar token da API' });
+  }
+});
+
+// Configurações de tema
+router.get('/theme-config', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM theme_config ORDER BY created_at DESC LIMIT 1');
+    res.json({ theme: result.rows[0] || null });
+  } catch (error) {
+    console.error('Erro ao buscar configuração do tema:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.post('/theme-config', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { theme } = req.body;
+    
+    console.log('🎨 [SERVER] Tema recebido:', JSON.stringify(theme, null, 2));
+    
+    if (!theme) {
+      return res.status(400).json({ error: 'Configuração do tema é obrigatória' });
+    }
+
+    const {
+      primaryColor, secondaryColor, accentColor, titleColor, subtitleColor,
+      menuTitleColor, backgroundGradient, cardBackground, textGradient, 
+      buttonGradient, hoverEffects, glassEffect, borderRadius, shadowIntensity
+    } = theme;
+
+    // Primeiro, deletar configuração anterior (manter apenas uma)
+    await query('DELETE FROM theme_config');
+    
+    // Inserir nova configuração
+    const result = await query(`
+      INSERT INTO theme_config (
+        primary_color, secondary_color, accent_color, title_color, subtitle_color,
+        menu_title_color, background_gradient, card_background, text_gradient, 
+        button_gradient, hover_effects, glass_effect, border_radius, shadow_intensity, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CURRENT_TIMESTAMP)
+      RETURNING id
+    `, [
+      primaryColor, secondaryColor, accentColor, titleColor, subtitleColor,
+      menuTitleColor, backgroundGradient, cardBackground, textGradient, 
+      buttonGradient, hoverEffects, glassEffect, borderRadius, shadowIntensity
+    ]);
+    
+    res.json({ 
+      message: 'Configuração do tema salva com sucesso',
+      themeId: result.rows[0].id
+    });
+
+  } catch (error) {
+    console.error('Erro ao salvar configuração do tema:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint público para obter configuração atual do tema
+router.get('/theme-config/current', async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM theme_config ORDER BY created_at DESC LIMIT 1');
+    res.json({ theme: result.rows[0] || null });
+  } catch (error) {
+    console.error('Erro ao buscar configuração do tema:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Configuração do link Deriv
+router.get('/deriv-config', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM deriv_config ORDER BY created_at DESC LIMIT 1');
+    res.json({ config: result.rows[0] || null });
+  } catch (error) {
+    console.error('Erro ao buscar configuração do Deriv:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.post('/deriv-config', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { affiliate_link } = req.body;
+    
+    console.log('🚀 [SERVER] Link de afiliado Deriv recebido:', affiliate_link);
+    
+    if (!affiliate_link || !affiliate_link.trim()) {
+      return res.status(400).json({ error: 'Link de afiliado é obrigatório' });
+    }
+
+    // Validar se é um URL válido
+    try {
+      new URL(affiliate_link);
+    } catch {
+      return res.status(400).json({ error: 'Link de afiliado deve ser um URL válido' });
+    }
+
+    // Primeiro, deletar configuração anterior (manter apenas uma)
+    await query('DELETE FROM deriv_config');
+    
+    // Inserir nova configuração
+    const result = await query(`
+      INSERT INTO deriv_config (affiliate_link, created_at) 
+      VALUES ($1, CURRENT_TIMESTAMP) 
+      RETURNING id
+    `, [affiliate_link.trim()]);
+    
+    res.json({ 
+      message: 'Link de afiliado salvo com sucesso',
+      affiliate_link: affiliate_link.trim()
+    });
+
+  } catch (error) {
+    console.error('Erro ao salvar configuração do Deriv:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Configuração do link do botão "Obter Acesso"
+router.get('/access-link-config', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM access_link_config ORDER BY created_at DESC LIMIT 1');
+    res.json({ config: result.rows[0] || null });
+  } catch (error) {
+    console.error('Erro ao buscar configuração do link de acesso:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+router.post('/access-link-config', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { access_link } = req.body;
+    
+    console.log('🔗 [SERVER] Link de acesso recebido:', access_link);
+    
+    if (!access_link || !access_link.trim()) {
+      return res.status(400).json({ error: 'Link de acesso é obrigatório' });
+    }
+
+    // Validar se é um URL válido
+    try {
+      new URL(access_link);
+    } catch {
+      return res.status(400).json({ error: 'Link de acesso deve ser um URL válido' });
+    }
+
+    // Primeiro, deletar configuração anterior (manter apenas uma)
+    await query('DELETE FROM access_link_config');
+    
+    // Inserir nova configuração
+    const result = await query(`
+      INSERT INTO access_link_config (access_link, created_at) 
+      VALUES ($1, CURRENT_TIMESTAMP) 
+      RETURNING id
+    `, [access_link.trim()]);
+    
+    res.json({ 
+      message: 'Link de acesso salvo com sucesso',
+      access_link: access_link.trim()
+    });
+
+  } catch (error) {
+    console.error('Erro ao salvar configuração do link de acesso:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint público para obter o link de acesso
+router.get('/access-link-config/current', async (req, res) => {
+  try {
+    const result = await query('SELECT access_link FROM access_link_config ORDER BY created_at DESC LIMIT 1');
+    res.json({ access_link: result.rows[0]?.access_link || null });
+  } catch (error) {
+    console.error('Erro ao buscar link de acesso atual:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+
+
+const DerivMarkupAPI = require('../utils/derivMarkupAPI');
+
+// Estatísticas de markup
+router.get('/markup-stats', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const derivAPI = new DerivMarkupAPI();
+    const stats = await derivAPI.getMarkupStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Erro ao buscar estatísticas de markup:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Transações de markup
+router.get('/markup-transactions', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const derivAPI = new DerivMarkupAPI();
+    const limit = parseInt(req.query.limit) || 50;
+    const transactions = await derivAPI.getMarkupTransactions(limit);
+    res.json({ transactions });
+  } catch (error) {
+    console.error('Erro ao buscar transações de markup:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Dados mensais de markup
+router.get('/markup-monthly', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { month, year } = req.query;
+    
+    if (!month || !year) {
+      return res.status(400).json({ error: 'Mês e ano são obrigatórios' });
+    }
+    
+    const derivAPI = new DerivMarkupAPI();
+    const monthlyData = await derivAPI.getMonthlyMarkupData(parseInt(month), parseInt(year));
+    res.json(monthlyData);
+  } catch (error) {
+    console.error('Erro ao buscar dados mensais:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Sincronizar dados com a Deriv API
+router.post('/sync-markup-data', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const derivAPI = new DerivMarkupAPI();
+    const result = await derivAPI.syncMarkupData();
+    res.json(result);
+  } catch (error) {
+    console.error('Erro ao sincronizar dados:', error);
+    res.status(500).json({ error: 'Erro ao sincronizar com a Deriv API' });
+  }
+});
+
+// Validar configuração do App ID
+router.get('/validate-app-config', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const derivAPI = new DerivMarkupAPI();
+    const validation = await derivAPI.validateAppConfiguration();
+    res.json(validation);
+  } catch (error) {
+    console.error('Erro ao validar configuração:', error);
+    res.status(500).json({ error: 'Erro ao validar configuração' });
   }
 });
 

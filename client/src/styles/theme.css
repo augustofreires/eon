@@ -1,0 +1,330 @@
+/* Theme CSS Variables */
+:root {
+  /* Default Netflix-style theme colors - aplicados instantaneamente para evitar flash */
+  --primary-color: #e50914;
+  --secondary-color: #f40612;
+  --accent-color: #ffffff;
+  --title-color: #ffffff;
+  --subtitle-color: #b3b3b3;
+  --menu-title-color: #00d4aa;
+  --background-gradient: linear-gradient(135deg, #141414 0%, #000000 100%);
+  --card-background: rgba(35, 35, 35, 0.95);
+  --text-gradient: linear-gradient(135deg, #e50914 0%, #f40612 100%);
+  --button-gradient: linear-gradient(135deg, #e50914 0%, #f40612 100%);
+  --border-radius: 8px;
+  
+  /* Derived colors for better theming */
+  --primary-rgb: 229, 9, 20;
+  --secondary-rgb: 244, 6, 18;
+  --accent-rgb: 255, 255, 255;
+  
+  /* Shadow intensities - Netflix style */
+  --shadow-light: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-medium: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --shadow-strong: 0 8px 32px rgba(0, 0, 0, 0.8);
+}
+
+/* Global theme classes */
+.theme-background,
+body,
+#root,
+.MuiBox-root.theme-background {
+  background: var(--background-gradient) !important;
+  min-height: 100vh;
+}
+
+/* Apply background gradient to main container */
+.MuiBox-root[class*="minHeight"] {
+  background: var(--background-gradient) !important;
+}
+
+.theme-card {
+  background: var(--card-background);
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(0, 212, 170, 0.2);
+}
+
+.glass-effect .theme-card {
+  backdrop-filter: blur(10px);
+}
+
+.theme-text-gradient {
+  background: var(--text-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-fill-color: transparent;
+}
+
+.theme-button {
+  background: var(--button-gradient) !important;
+  border-radius: calc(var(--border-radius) / 2);
+}
+
+.theme-button:hover {
+  filter: brightness(1.1);
+}
+
+/* Hover effects */
+.hover-effects .theme-card:hover {
+  transform: translateY(-4px);
+  transition: all 0.3s ease;
+}
+
+/* Shadow classes */
+.shadow-light .theme-card {
+  box-shadow: var(--shadow-light);
+}
+
+.shadow-medium .theme-card {
+  box-shadow: var(--shadow-medium);
+}
+
+.shadow-strong .theme-card {
+  box-shadow: var(--shadow-strong);
+}
+
+.hover-effects.shadow-light .theme-card:hover {
+  box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.3);
+}
+
+.hover-effects.shadow-medium .theme-card:hover {
+  box-shadow: 0 12px 32px rgba(var(--primary-rgb), 0.4);
+}
+
+.hover-effects.shadow-strong .theme-card:hover {
+  box-shadow: 0 16px 40px rgba(var(--primary-rgb), 0.5);
+}
+
+/* Better hover effects using theme variables */
+.theme-card:hover {
+  border-color: rgba(var(--primary-rgb), 0.3) !important;
+  box-shadow: 0 12px 32px rgba(var(--primary-rgb), 0.1) !important;
+}
+
+.hover-effects .theme-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(var(--primary-rgb), 0.4) !important;
+}
+
+/* Secondary color utilities */
+.theme-secondary-bg {
+  background-color: var(--secondary-color) !important;
+}
+
+.theme-accent-bg {
+  background-color: var(--accent-color) !important;
+}
+
+.theme-border {
+  border: 1px solid rgba(var(--primary-rgb), 0.2) !important;
+}
+
+.theme-border-secondary {
+  border: 1px solid rgba(var(--secondary-rgb), 0.2) !important;
+}
+
+/* Title and subtitle utilities */
+.theme-title {
+  color: var(--title-color) !important;
+}
+
+.theme-subtitle {
+  color: var(--subtitle-color) !important;
+}
+
+/* Auto-apply title and subtitle colors to common elements with higher specificity - APLICAÇÃO IMEDIATA */
+html body h1, html body h2, html body h3, html body h4, html body h5, html body h6,
+html body .MuiTypography-h1,
+html body .MuiTypography-h2,
+html body .MuiTypography-h3,
+html body .MuiTypography-h4,
+html body .MuiTypography-h5,
+html body .MuiTypography-h6,
+html body .MuiTypography-root.MuiTypography-h1,
+html body .MuiTypography-root.MuiTypography-h2,
+html body .MuiTypography-root.MuiTypography-h3,
+html body .MuiTypography-root.MuiTypography-h4,
+html body .MuiTypography-root.MuiTypography-h5,
+html body .MuiTypography-root.MuiTypography-h6,
+/* Seletores mais específicos para capturar todos os títulos */
+html body [class*="MuiTypography-h"],
+html body [class*="Typography-h"],
+html body .theme-text-gradient {
+  color: var(--title-color) !important;
+  transition: color 0.1s ease !important;
+}
+
+/* Force override for gradient titles - use solid color when title color is customized */
+.theme-text-gradient {
+  background: var(--text-gradient) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  text-fill-color: transparent !important;
+}
+
+/* Override gradient with solid color when using custom title color - higher specificity */
+html body:not(.use-gradient-titles) .theme-text-gradient,
+html body.use-solid-titles .theme-text-gradient,
+html body .use-solid-titles .theme-text-gradient {
+  color: var(--title-color) !important;
+  background: none !important;
+  background-clip: unset !important;
+  -webkit-background-clip: unset !important;
+  -webkit-text-fill-color: unset !important;
+  text-fill-color: unset !important;
+}
+
+/* Menu titles */
+.theme-menu-title {
+  color: var(--menu-title-color, var(--title-color)) !important;
+}
+
+html body .MuiTypography-subtitle1,
+html body .MuiTypography-subtitle2,
+html body .MuiTypography-body2,
+html body .MuiTypography-root.MuiTypography-subtitle1,
+html body .MuiTypography-root.MuiTypography-subtitle2,
+html body .MuiTypography-root.MuiTypography-body2,
+html body [class*="subtitle"] {
+  color: var(--subtitle-color) !important;
+}
+
+/* Material UI overrides */
+.theme-card,
+.MuiCard-root.theme-card,
+.MuiBox-root.theme-card {
+  background: var(--card-background) !important;
+  border-radius: var(--border-radius) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(var(--primary-rgb), 0.15) !important;
+  box-shadow: var(--shadow-medium) !important;
+  transition: all 0.3s ease !important;
+}
+
+/* Apply theme to all cards that have specific background patterns */
+.MuiCard-root[class*="linear-gradient"],
+.MuiBox-root[class*="linear-gradient"],
+[style*="linear-gradient(135deg, rgba(255, 255, 255"],
+.css-*[class*="background"]:not(.theme-card) {
+  background: var(--card-background) !important;
+  border-radius: var(--border-radius) !important;
+  backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(var(--primary-rgb), 0.2) !important;
+  box-shadow: var(--shadow-medium) !important;
+}
+
+/* Global override for common Material-UI card patterns */
+.MuiCard-root:not(.MuiPaper-root.MuiAlert-root) {
+  background: var(--card-background) !important;
+  border-radius: var(--border-radius) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(var(--primary-rgb), 0.15) !important;
+}
+
+.theme-button,
+.MuiButton-contained.theme-button,
+.MuiButton-root.theme-button,
+.MuiButton-contained[style*="linear-gradient(135deg, #00d4aa"],
+.MuiButton-root[style*="linear-gradient(135deg, #00d4aa"] {
+  background: var(--button-gradient) !important;
+  border-radius: calc(var(--border-radius) / 2) !important;
+  color: white !important;
+}
+
+.theme-button:hover,
+.MuiButton-contained.theme-button:hover,
+.MuiButton-root.theme-button:hover,
+.MuiButton-contained[style*="linear-gradient(135deg, #00d4aa"]:hover,
+.MuiButton-root[style*="linear-gradient(135deg, #00d4aa"]:hover {
+  background: var(--button-gradient) !important;
+  filter: brightness(1.1);
+}
+
+/* Global button styling for primary colored buttons */
+.MuiButton-contained.MuiButton-containedPrimary {
+  background: var(--button-gradient) !important;
+  border-radius: calc(var(--border-radius) / 2) !important;
+}
+
+.MuiButton-contained.MuiButton-containedPrimary:hover {
+  background: var(--button-gradient) !important;
+  filter: brightness(1.1);
+}
+
+/* Custom scrollbar with theme colors - Netflix style */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary-color);
+  border-radius: 4px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--secondary-color);
+}
+
+/* Netflix-style enhancements */
+.theme-text-gradient {
+  background: var(--text-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-fill-color: transparent;
+  font-weight: bold;
+}
+
+/* Enhanced glass effect for Netflix look */
+.glass-effect .theme-card {
+  backdrop-filter: blur(20px) !important;
+  background: rgba(35, 35, 35, 0.85) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Better focus states for accessibility */
+.MuiButton-contained:focus,
+.theme-button:focus {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* Fix Accordion expand icon behavior */
+.MuiAccordionSummary-expandIconWrapper {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transform: rotate(0deg) !important;
+}
+
+.MuiAccordionSummary-expandIconWrapper.Mui-expanded {
+  transform: rotate(180deg) !important;
+}
+
+/* Ensure accordion content is not flipped */
+.MuiAccordionDetails-root {
+  transform: none !important;
+}
+
+/* Fix Accordion border radius behavior */
+.MuiAccordion-root {
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+.MuiAccordion-root .MuiAccordionSummary-root {
+  border-radius: 16px !important;
+}
+
+.MuiAccordion-root.Mui-expanded .MuiAccordionSummary-root {
+  border-radius: 16px 16px 0 0 !important;
+}
+
+.MuiAccordion-root .MuiAccordionDetails-root {
+  border-radius: 0 0 16px 16px !important;
+}

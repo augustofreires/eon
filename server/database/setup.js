@@ -110,6 +110,49 @@ const setupDatabase = async () => {
       )
     `);
 
+    // Tabela de configurações de tema
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS theme_config (
+        id SERIAL PRIMARY KEY,
+        primary_color VARCHAR(50) DEFAULT '#00d4aa',
+        secondary_color VARCHAR(50) DEFAULT '#00b89c',
+        accent_color VARCHAR(50) DEFAULT '#4CAF50',
+        background_gradient TEXT DEFAULT 'linear-gradient(135deg, rgba(15, 23, 42, 0.02) 0%, rgba(26, 31, 58, 0.02) 100%)',
+        card_background TEXT DEFAULT 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%)',
+        text_gradient TEXT DEFAULT 'linear-gradient(135deg, #00d4aa 0%, #00b89c 100%)',
+        button_gradient TEXT DEFAULT 'linear-gradient(135deg, #00d4aa 0%, #00b89c 100%)',
+        hover_effects BOOLEAN DEFAULT true,
+        glass_effect BOOLEAN DEFAULT true,
+        border_radius INTEGER DEFAULT 20,
+        shadow_intensity VARCHAR(20) DEFAULT 'medium',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Tabela de configurações do Deriv/Afiliado
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS deriv_config (
+        id SERIAL PRIMARY KEY,
+        affiliate_enabled BOOLEAN DEFAULT false,
+        affiliate_token VARCHAR(255),
+        commission_rate DECIMAL(5,2) DEFAULT 0.5,
+        tracking_enabled BOOLEAN DEFAULT true,
+        custom_landing_page VARCHAR(500),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Adicionar colunas para sistema de afiliados na tabela users (se não existirem)
+    try {
+      await pool.query(`
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS referral_id VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS commission_earned DECIMAL(10,2) DEFAULT 0
+      `);
+    } catch (error) {
+      console.log('Colunas de afiliado já existem ou erro na migração:', error.message);
+    }
+
     // Inserir configurações padrão se não existirem
     const settingsExists = await pool.query('SELECT id FROM system_settings WHERE id = 1');
     if (settingsExists.rows.length === 0) {

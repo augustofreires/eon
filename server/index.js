@@ -8,7 +8,7 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Middleware de segurança
 app.use(helmet({
@@ -24,10 +24,10 @@ app.use(helmet({
   }
 }));
 
-// Rate limiting
+// Rate limiting (mais permissivo para desenvolvimento)
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutos
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // Aumentado para 1000
   message: {
     error: 'Muitas requisições. Tente novamente mais tarde.'
   }
@@ -53,6 +53,13 @@ app.use('/api/bots', require('./routes/bots'));
 app.use('/api/operations', require('./routes/operations'));
 app.use('/api/courses', require('./routes/courses'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/bank-management', require('./routes/bank-management-fixed'));
+app.use('/api/profile', require('./routes/profile'));
+app.use('/api', require('./routes/payment-platforms'));
+app.use('/api', require('./routes/useful-links'));
+app.use('/api', require('./routes/pages'));
+app.use('/api/branding', require('./routes/branding'));
+app.use('/api', require('./routes/action-cards'));
 
 // Upload de arquivos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -94,6 +101,10 @@ const io = require('socket.io')(server, {
     credentials: true
   }
 });
+
+// Configurar Socket.io no manager
+const { setSocketIO } = require('./socketManager');
+setSocketIO(io);
 
 // Gerenciamento de conexões Socket.io
 require('./socket')(io);

@@ -15,7 +15,7 @@ const authenticateToken = async (req, res, next) => {
     
     // Buscar usuário no banco
     const result = await query(
-      'SELECT id, email, name, role, status FROM users WHERE id = $1',
+      'SELECT id, email, role, status FROM users WHERE id = $1',
       [decoded.userId]
     );
 
@@ -39,6 +39,9 @@ const authenticateToken = async (req, res, next) => {
 
 // Middleware para verificar se é admin
 const requireAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Usuário não autenticado' });
+  }
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Acesso negado. Apenas administradores.' });
   }
@@ -47,6 +50,9 @@ const requireAdmin = (req, res, next) => {
 
 // Middleware para verificar se é cliente
 const requireClient = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Usuário não autenticado' });
+  }
   if (req.user.role !== 'client') {
     return res.status(403).json({ error: 'Acesso negado. Apenas clientes.' });
   }

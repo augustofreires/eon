@@ -7,6 +7,8 @@ interface User {
   email: string;
   name: string;
   role: 'admin' | 'client';
+  deriv_connected?: boolean;
+  deriv_account_id?: string;
 }
 
 interface AuthContextType {
@@ -36,7 +38,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   // Configurar axios
-  axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
   // Interceptor para adicionar token
   axios.interceptors.request.use((config) => {
@@ -87,6 +89,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setLoading(true);
       
+      // Usar rota específica baseada no tipo de usuário
       const endpoint = isAdmin ? '/api/auth/login' : '/api/auth/client-login';
       const response = await axios.post(endpoint, { email, password });
       

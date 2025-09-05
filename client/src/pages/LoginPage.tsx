@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -22,22 +22,77 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+
+interface BrandingConfig {
+  platform_name: string;
+  platform_subtitle: string;
+  logo_url?: string;
+  favicon_url?: string;
+}
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [branding, setBranding] = useState<BrandingConfig>({
+    platform_name: 'EON PRO',
+    platform_subtitle: 'Plataforma de Trading Inteligente'
+  });
+  const [accessLink, setAccessLink] = useState<string | null>(null);
   const { login, loading } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    loadBranding();
+    loadAccessLink();
+  }, []);
+
+  const loadBranding = async () => {
+    try {
+      const response = await axios.get('/api/branding/config');
+      setBranding(response.data);
+      
+      // Atualizar favicon dinamicamente se disponível
+      if (response.data.favicon_url) {
+        const link = document.querySelector("link[rel*='icon']") as HTMLLinkElement;
+        if (link) {
+          link.href = response.data.favicon_url;
+        } else {
+          const newLink = document.createElement('link');
+          newLink.rel = 'icon';
+          newLink.href = response.data.favicon_url;
+          document.head.appendChild(newLink);
+        }
+      }
+      
+      // Atualizar título da página
+      document.title = `${response.data.platform_name} - ${window.location.pathname === '/admin' ? 'Painel Administrativo' : 'Login'}`;
+    } catch (error) {
+      console.error('Erro ao carregar branding:', error);
+    }
+  };
+
+  const loadAccessLink = async () => {
+    try {
+      const response = await axios.get('/api/admin/access-link-config/current');
+      if (response.data.access_link) {
+        setAccessLink(response.data.access_link);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar link de acesso:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     try {
-      await login(email, password, true); // isAdmin = true para login admin
-      navigate('/admin');
+      const isAdminPage = window.location.pathname === '/admin';
+      await login(email, password, isAdminPage);
+      navigate(isAdminPage ? '/admin' : '/dashboard');
     } catch (error: any) {
       console.error('Erro no login:', error);
       setError(error.response?.data?.error || 'Credenciais inválidas');
@@ -45,8 +100,13 @@ const LoginPage: React.FC = () => {
   };
 
   const handleGetAccess = () => {
-    // Redirecionar para página de pagamento
-    window.location.href = '/payment';
+    if (accessLink) {
+      // Redirecionar para o link configurado no admin
+      window.open(accessLink, '_blank');
+    } else {
+      // Fallback para página de pagamento
+      window.location.href = '/payment';
+    }
   };
 
   return (
@@ -58,7 +118,7 @@ const LoginPage: React.FC = () => {
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
-        overflow: 'hidden'
+        py: { xs: 2, sm: 0 }
       }}
     >
       {/* Background Pattern */}
@@ -85,30 +145,49 @@ const LoginPage: React.FC = () => {
           zIndex: 2,
           width: '100%',
           maxWidth: 400,
-          mx: 2
+          mx: 2,
+          maxHeight: { xs: '100vh', sm: 'none' },
+          overflowY: { xs: 'auto', sm: 'visible' }
         }}
       >
         {/* Logo */}
-        <Box textAlign="center" mb={4}>
-          <Typography
-            variant="h3"
-            sx={{
-              fontWeight: 700,
-              color: '#fff',
-              textShadow: '0 0 20px rgba(255, 69, 0, 0.5)',
-              mb: 1
-            }}
-          >
-            EON PRO
-          </Typography>
+        <Box textAlign="center" mb={4} mt={{ xs: 2, sm: 6 }} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {branding.logo_url ? (
+            <Box mb={2} sx={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
+              <img 
+                src={branding.logo_url} 
+                alt={branding.platform_name}
+                style={{
+                  maxWidth: '280px',
+                  maxHeight: '100px',
+                  objectFit: 'contain',
+                  filter: 'drop-shadow(0 0 20px rgba(255, 255, 255, 0.3))'
+                }}
+              />
+            </Box>
+          ) : (
+            <Typography
+              variant="h3"
+              sx={{
+                fontWeight: 700,
+                color: '#fff',
+                textShadow: '0 0 20px var(--primary-color)',
+                mb: 1,
+                textAlign: 'center'
+              }}
+            >
+              {branding.platform_name}
+            </Typography>
+          )}
           <Typography
             variant="body1"
             sx={{
               color: 'rgba(255, 255, 255, 0.7)',
-              fontSize: '1.1rem'
+              fontSize: '1.1rem',
+              textAlign: 'center'
             }}
           >
-            Plataforma de Trading Inteligente
+            {window.location.pathname === '/admin' ? 'Painel Administrativo' : branding.platform_subtitle}
           </Typography>
         </Box>
 
@@ -152,16 +231,16 @@ const LoginPage: React.FC = () => {
                       borderColor: 'rgba(255, 255, 255, 0.3)',
                     },
                     '&:hover fieldset': {
-                      borderColor: 'rgba(255, 69, 0, 0.5)',
+                      borderColor: 'var(--primary-color)',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: '#ff4500',
+                      borderColor: 'var(--primary-color)',
                     },
                   },
                   '& .MuiInputLabel-root': {
                     color: 'rgba(255, 255, 255, 0.7)',
                     '&.Mui-focused': {
-                      color: '#ff4500',
+                      color: 'var(--primary-color)',
                     },
                   },
                 }}
@@ -200,16 +279,16 @@ const LoginPage: React.FC = () => {
                       borderColor: 'rgba(255, 255, 255, 0.3)',
                     },
                     '&:hover fieldset': {
-                      borderColor: 'rgba(255, 69, 0, 0.5)',
+                      borderColor: 'var(--primary-color)',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: '#ff4500',
+                      borderColor: 'var(--primary-color)',
                     },
                   },
                   '& .MuiInputLabel-root': {
                     color: 'rgba(255, 255, 255, 0.7)',
                     '&.Mui-focused': {
-                      color: '#ff4500',
+                      color: 'var(--primary-color)',
                     },
                   },
                 }}
@@ -225,9 +304,10 @@ const LoginPage: React.FC = () => {
                   mt: 3,
                   mb: 2,
                   py: 1.5,
-                  background: 'linear-gradient(135deg, #ff4500 0%, #ff6347 100%)',
+                  background: 'var(--button-gradient)',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #ff6347 0%, #ff4500 100%)',
+                    background: 'var(--button-gradient)',
+                    opacity: 0.9
                   },
                   fontSize: '1.1rem',
                   fontWeight: 600,
@@ -245,9 +325,10 @@ const LoginPage: React.FC = () => {
                 sx={{
                   mb: 2,
                   py: 1.5,
-                  background: 'linear-gradient(135deg, #ff4500 0%, #ff6347 100%)',
+                  background: 'var(--button-gradient)',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #ff6347 0%, #ff4500 100%)',
+                    background: 'var(--button-gradient)',
+                    opacity: 0.9
                   },
                   fontSize: '1.1rem',
                   fontWeight: 600,
@@ -259,16 +340,32 @@ const LoginPage: React.FC = () => {
 
               <Box textAlign="center">
                 <Link
-                  href="#"
+                  href="/forgot-password"
                   sx={{
                     color: 'rgba(255, 255, 255, 0.7)',
                     textDecoration: 'none',
                     '&:hover': {
-                      color: '#ff4500',
+                      color: 'var(--primary-color)',
                     },
                   }}
                 >
                   Esqueceu a senha?
+                </Link>
+              </Box>
+
+              <Box textAlign="center" sx={{ mt: 2 }}>
+                <Link
+                  href={window.location.pathname === '/admin' ? '/login' : '/admin'}
+                  sx={{
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    textDecoration: 'none',
+                    fontSize: '0.9rem',
+                    '&:hover': {
+                      color: 'var(--primary-color)',
+                    },
+                  }}
+                >
+                  {window.location.pathname === '/admin' ? 'Portal do Cliente' : 'Acesso Administrativo'}
                 </Link>
               </Box>
             </form>
@@ -278,22 +375,65 @@ const LoginPage: React.FC = () => {
         {/* Disclaimer */}
         <Box
           sx={{
-            mt: 4,
+            mt: { xs: 2, sm: 4 },
             textAlign: 'center',
             color: 'rgba(255, 255, 255, 0.6)',
-            fontSize: '0.85rem',
+            fontSize: { xs: '0.75rem', sm: '0.85rem' },
             lineHeight: 1.5,
             maxWidth: 600,
-            mx: 'auto'
+            mx: 'auto',
+            px: { xs: 1, sm: 0 }
           }}
         >
-          O Deriv oferece derivativos complexos como opções e contratos por diferença ('CFDs'). 
+          A Deriv oferece derivativos complexos como opções e contratos por diferença ('CFDs'). 
           Estes produtos podem não ser adequados para todos os clientes, e sua comercialização 
           envolve riscos para você. Certifique-se de compreender os seguintes riscos antes de 
           negociar produtos derivados: a) você pode perder parte ou todo o dinheiro investido 
           na negociação, b) se sua negociação envolver conversão de moeda, as taxas de câmbio 
           afetarão seus lucros e perdas. Nunca se deve negociar com dinheiro emprestado ou 
           dinheiro que não se pode perder.
+        </Box>
+
+        {/* Legal Links */}
+        <Box
+          sx={{
+            mt: { xs: 2, sm: 3 },
+            mb: { xs: 2, sm: 0 },
+            textAlign: 'center',
+            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+            pt: 2
+          }}
+        >
+          <Link
+            href="/about"
+            sx={{
+              color: 'rgba(255, 255, 255, 0.4)',
+              textDecoration: 'none',
+              fontSize: '0.8rem',
+              mx: 2,
+              '&:hover': {
+                color: 'rgba(255, 255, 255, 0.6)',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            Quem Somos
+          </Link>
+          <Link
+            href="/terms"
+            sx={{
+              color: 'rgba(255, 255, 255, 0.4)',
+              textDecoration: 'none',
+              fontSize: '0.8rem',
+              mx: 2,
+              '&:hover': {
+                color: 'rgba(255, 255, 255, 0.6)',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            Termos e Condições
+          </Link>
         </Box>
       </Box>
     </Box>

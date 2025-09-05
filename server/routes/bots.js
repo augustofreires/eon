@@ -11,7 +11,7 @@ const router = express.Router();
 // Configuração do Multer para upload de arquivos XML
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = process.env.UPLOAD_PATH || './uploads';
+    const uploadPath = process.env.UPLOAD_PATH || path.join(__dirname, '..', 'uploads');
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
@@ -29,10 +29,20 @@ const upload = multer({
     fileSize: parseInt(process.env.MAX_FILE_SIZE) || 10 * 1024 * 1024 // 10MB
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/xml' || file.originalname.endsWith('.xml')) {
-      cb(null, true);
+    if (file.fieldname === 'xml') {
+      if (file.mimetype === 'application/xml' || file.originalname.endsWith('.xml')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Arquivo XML deve ter extensão .xml'), false);
+      }
+    } else if (file.fieldname === 'image') {
+      if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Arquivo de imagem inválido'), false);
+      }
     } else {
-      cb(new Error('Apenas arquivos XML são permitidos'), false);
+      cb(new Error('Campo de arquivo não reconhecido'), false);
     }
   }
 });
@@ -45,20 +55,19 @@ router.get('/', authenticateToken, async (req, res) => {
     if (req.user.role === 'admin') {
       // Admin vê todos os bots
       result = await query(`
-        SELECT b.*, u.name as created_by_name 
+        SELECT b.*, u.email as created_by_email 
         FROM bots b 
         LEFT JOIN users u ON b.created_by = u.id 
         ORDER BY b.created_at DESC
       `);
     } else {
-      // Cliente vê apenas bots com permissão
+      // Cliente vê todos os bots ativos (simplificado por enquanto)
       result = await query(`
-        SELECT b.*, ubp.can_access
+        SELECT b.*
         FROM bots b
-        INNER JOIN user_bot_permissions ubp ON b.id = ubp.bot_id
-        WHERE ubp.user_id = $1 AND ubp.can_access = true AND b.is_active = true
+        WHERE b.is_active = true
         ORDER BY b.created_at DESC
-      `, [req.user.id]);
+      `);
     }
 
     res.json({
@@ -72,10 +81,12 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Upload de bot XML (apenas admin)
-router.post('/upload', authenticateToken, requireAdmin, upload.single('xmlFile'), [
+// Criar bot via JSON (apenas admin)
+router.post('/', authenticateToken, requireAdmin, [
   body('name').notEmpty().trim(),
-  body('description').optional().trim()
+  body('description').optional().trim(),
+  body('xml_content').notEmpty(),
+  body('xml_filename').optional()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -83,23 +94,15 @@ router.post('/upload', authenticateToken, requireAdmin, upload.single('xmlFile')
       return res.status(400).json({ errors: errors.array() });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'Arquivo XML necessário' });
-    }
-
-    const { name, description } = req.body;
-    const xmlContent = fs.readFileSync(req.file.path, 'utf8');
+    const { name, description, xml_content, xml_filename } = req.body;
 
     // Validar se é um XML válido
     try {
-      // Verificação básica de XML
-      if (!xmlContent.includes('<?xml') && !xmlContent.includes('<block')) {
+      if (!xml_content.includes('<?xml') && !xml_content.includes('<block')) {
         throw new Error('Arquivo XML inválido');
       }
     } catch (xmlError) {
-      // Remover arquivo inválido
-      fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: 'Arquivo XML inválido' });
+      return res.status(400).json({ error: 'Conteúdo XML inválido' });
     }
 
     // Inserir bot no banco
@@ -107,7 +110,7 @@ router.post('/upload', authenticateToken, requireAdmin, upload.single('xmlFile')
       INSERT INTO bots (name, description, xml_content, xml_filename, created_by)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING id, name, description, created_at
-    `, [name, description, xmlContent, req.file.filename, req.user.id]);
+    `, [name, description, xml_content, xml_filename || `${name}.xml`, req.user.id]);
 
     const bot = result.rows[0];
 
@@ -117,13 +120,134 @@ router.post('/upload', authenticateToken, requireAdmin, upload.single('xmlFile')
         id: bot.id,
         name: bot.name,
         description: bot.description,
-        filename: req.file.filename,
+        created_at: bot.created_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro ao criar bot:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Upload de bot XML com imagem opcional (apenas admin)  
+router.post('/upload', authenticateToken, requireAdmin, upload.fields([
+  { name: 'xml', maxCount: 1 },
+  { name: 'image', maxCount: 1 }
+]), [
+  body('name').notEmpty().trim(),
+  body('description').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    if (!req.files || !req.files.xml) {
+      return res.status(400).json({ error: 'Arquivo XML necessário' });
+    }
+
+    const { name, description } = req.body;
+    const xmlFile = req.files.xml[0];
+    const imageFile = req.files.image ? req.files.image[0] : null;
+    
+    const xmlContent = fs.readFileSync(xmlFile.path, 'utf8');
+    let imageUrl = null;
+    
+    if (imageFile) {
+      imageUrl = `/uploads/${imageFile.filename}`;
+    }
+
+    // Validar se é um XML válido
+    try {
+      // Verificação básica de XML
+      if (!xmlContent.includes('<?xml') && !xmlContent.includes('<block')) {
+        throw new Error('Arquivo XML inválido');
+      }
+    } catch (xmlError) {
+      // Remover arquivos inválidos
+      fs.unlinkSync(xmlFile.path);
+      if (imageFile) fs.unlinkSync(imageFile.path);
+      return res.status(400).json({ error: 'Arquivo XML inválido' });
+    }
+
+    // Inserir bot no banco
+    const result = await query(`
+      INSERT INTO bots (name, description, xml_content, xml_filename, image_url, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, name, description, created_at
+    `, [name, description, xmlContent, xmlFile.filename, imageUrl, req.user.id]);
+
+    const bot = result.rows[0];
+
+    res.status(201).json({
+      message: 'Bot criado com sucesso',
+      bot: {
+        id: bot.id,
+        name: bot.name,
+        description: bot.description,
+        filename: xmlFile.filename,
+        image_url: imageUrl,
         created_at: bot.created_at
       }
     });
 
   } catch (error) {
     console.error('Erro ao fazer upload do bot:', error);
+    
+    // Remover arquivos em caso de erro
+    if (req.files) {
+      if (req.files.xml && fs.existsSync(req.files.xml[0].path)) {
+        fs.unlinkSync(req.files.xml[0].path);
+      }
+      if (req.files.image && fs.existsSync(req.files.image[0].path)) {
+        fs.unlinkSync(req.files.image[0].path);
+      }
+    }
+    
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Upload de imagem para bot existente (apenas admin)
+router.post('/:id/image', authenticateToken, requireAdmin, upload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Imagem necessária' });
+    }
+
+    const imageUrl = `/uploads/${req.file.filename}`;
+
+    // Buscar bot existente para remover imagem antiga
+    const existingBot = await query('SELECT image_url FROM bots WHERE id = $1', [id]);
+    
+    if (existingBot.rows.length === 0) {
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Bot não encontrado' });
+    }
+
+    // Remover imagem antiga se existir
+    const oldImageUrl = existingBot.rows[0].image_url;
+    if (oldImageUrl) {
+      const oldImagePath = path.join(__dirname, '..', oldImageUrl);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+    }
+
+    // Atualizar bot com nova imagem
+    await query('UPDATE bots SET image_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [imageUrl, id]);
+
+    res.json({
+      message: 'Imagem do bot atualizada com sucesso',
+      image_url: imageUrl
+    });
+
+  } catch (error) {
+    console.error('Erro ao fazer upload da imagem do bot:', error);
     
     // Remover arquivo em caso de erro
     if (req.file && fs.existsSync(req.file.path)) {

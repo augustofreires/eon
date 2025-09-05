@@ -4,7 +4,7 @@ class DerivAPI {
   constructor() {
     this.ws = null;
     this.appId = process.env.DERIV_APP_ID;
-    this.baseUrl = 'wss://ws.binaryws.com/websockets/v3';
+    this.baseUrl = process.env.DERIV_API_URL || 'wss://ws.derivws.com/websockets/v3';
     this.pendingRequests = new Map();
     this.subscriptions = new Map();
   }

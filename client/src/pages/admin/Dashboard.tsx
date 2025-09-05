@@ -16,7 +16,6 @@ import {
   SmartToy,
   School,
   People,
-  TrendingUp,
   AccountBalance
 } from '@mui/icons-material';
 import axios from 'axios';
@@ -25,8 +24,7 @@ const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalBots: 0,
-    totalCourses: 0,
-    activeOperations: 0
+    totalCourses: 0
   });
 
   useEffect(() => {
@@ -35,12 +33,13 @@ const AdminDashboard: React.FC = () => {
 
   const loadStats = async () => {
     try {
-      // Simular dados para demonstração
+      const response = await axios.get('/api/admin/dashboard');
+      const { stats } = response.data;
+      
       setStats({
-        totalUsers: 25,
-        totalBots: 8,
-        totalCourses: 12,
-        activeOperations: 3
+        totalUsers: stats.total_clients || 0,
+        totalBots: stats.total_bots || 0,
+        totalCourses: stats.total_courses || 0
       });
     } catch (error) {
       console.error('Erro ao carregar estatísticas:', error);
@@ -56,7 +55,7 @@ const AdminDashboard: React.FC = () => {
 
       <Grid container spacing={3}>
         {/* Estatísticas */}
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -72,7 +71,7 @@ const AdminDashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -88,7 +87,7 @@ const AdminDashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center">
@@ -104,21 +103,6 @@ const AdminDashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center">
-                <TrendingUp sx={{ fontSize: 40, color: 'warning.main', mr: 2 }} />
-                <Box>
-                  <Typography variant="h4">{stats.activeOperations}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Operações Ativas
-                  </Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
 
         {/* Ações Rápidas */}
         <Grid item xs={12} md={6}>
@@ -150,7 +134,7 @@ const AdminDashboard: React.FC = () => {
                   <ListItemIcon>
                     <AccountBalance />
                   </ListItemIcon>
-                  <ListItemText primary="Configurar Deriv" />
+                  <ListItemText primary="Configurar Corretora" />
                 </ListItem>
               </List>
             </CardContent>
@@ -171,7 +155,7 @@ const AdminDashboard: React.FC = () => {
                   sx={{ mr: 1, mb: 1 }}
                 />
                 <Chip
-                  label="Deriv Conectado"
+                  label="Corretora Conectada"
                   color="success"
                   sx={{ mr: 1, mb: 1 }}
                 />

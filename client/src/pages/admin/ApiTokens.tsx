@@ -174,7 +174,7 @@ const ApiTokens: React.FC = () => {
       </Box>
 
       <Alert severity="info" sx={{ mb: 3 }}>
-        Os tokens de API permitem que aplicações acessem a Deriv em seu nome. 
+        Os tokens de API permitem que aplicações acessem a Corretora em seu nome. 
         Use com cuidado e apenas para aplicações confiáveis.
       </Alert>
 

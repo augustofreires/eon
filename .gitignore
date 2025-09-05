@@ -96,3 +96,34 @@ Thumbs.db
 
 # PM2
 ecosystem.config.js.backup
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+server/database.db
+server/database.sqlite
+
+# Uploads directory (user uploads)
+server/uploads/*
+!server/uploads/.gitkeep
+
+# SSL certificates
+ssl/
+*.crt
+*.key
+*.pem
+
+# Backup files
+backups/
+*.sql
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# Local configuration
+.claude/settings.local.json
+
+# Production secrets
+.env.production

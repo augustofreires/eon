@@ -59,25 +59,44 @@ Uma plataforma completa para gerenciar bots da Deriv e oferecer cursos de tradin
 ### **1. Instalação Local**
 ```bash
 # Clonar projeto
-git clone https://github.com/seu-usuario/eonpro.git
-cd eonpro
+git clone https://github.com/augustofreires/eon.git
+cd eon
 
-# Instalar dependências
-npm run install-all
+# Backend
+cd server && npm install && cd ..
+
+# Frontend  
+cd client && npm install && cd ..
 
 # Configurar variáveis de ambiente
-cp env.example .env
+cp .env.example .env
 # Editar .env com suas configurações
 
-# Configurar banco de dados
-npm run setup-db
-
-# Iniciar aplicação
-npm run dev
+# Iniciar com Docker
+docker-compose up --build -d
 ```
 
-### **2. Deploy em Produção**
-Veja o [Guia de Deploy Completo](GUIA_DEPLOY.md) para instruções detalhadas.
+### **2. Deploy em Produção (VPS)**
+```bash
+# No seu VPS
+git clone https://github.com/augustofreires/eon.git
+cd eon
+
+# Configurar ambiente
+cp .env.example .env
+nano .env
+
+# Deploy com Docker
+docker-compose up --build -d
+
+# Configurar banco
+docker-compose exec api npm run setup-db
+```
+
+### **3. Guias Detalhados**
+- [Configuração Contabo VPS](./CONTABO_SETUP_GUIDE.md)
+- [Status do Projeto](./STATUS.md)
+- [Guia de Deploy](./DEPLOY_GUIDE.md)
 
 ## 🔧 **Configuração da Deriv**
 

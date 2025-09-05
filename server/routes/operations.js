@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { query } = require('../database/connection');
 const { authenticateToken, requireClient, requireBotAccess } = require('../middleware/auth');
 const DerivAPI = require('../utils/derivApi');
-const { io } = require('../app');
+const { getSocketIO } = require('../socketManager');
 
 const router = express.Router();
 
@@ -41,7 +41,7 @@ router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
     // Criar operação
     const operationResult = await query(`
       INSERT INTO operations (user_id, bot_id, entry_amount, martingale, max_gain, max_loss, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, 'running', NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, 'running', CURRENT_TIMESTAMP)
       RETURNING *
     `, [userId, bot_id, entry_amount, martingale || false, max_gain, max_loss]);
 
@@ -100,7 +100,7 @@ router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
       // Atualizar operação com dados da Deriv
       await query(`
         UPDATE operations 
-        SET deriv_contract_id = $1, status = 'running', updated_at = NOW()
+        SET deriv_contract_id = $1, status = 'running', updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
       `, [buyResponse.buy.contract_id, operation.id]);
 
@@ -108,12 +108,15 @@ router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
       derivApi.disconnect();
 
       // Enviar notificação via Socket.io
-      io.to(`user_${userId}`).emit('operation_update', {
-        operation_id: operation.id,
-        status: 'running',
-        contract_id: buyResponse.buy.contract_id,
-        balance: buyResponse.buy.balance_after
-      });
+      const io = getSocketIO();
+      if (io) {
+        io.to(`user_${userId}`).emit('operation_update', {
+          operation_id: operation.id,
+          status: 'running',
+          contract_id: buyResponse.buy.contract_id,
+          balance: buyResponse.buy.balance_after
+        });
+      }
 
       res.json({
         success: true,
@@ -132,7 +135,7 @@ router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
       // Atualizar operação como falha
       await query(`
         UPDATE operations 
-        SET status = 'failed', error_message = $1, updated_at = NOW()
+        SET status = 'failed', error_message = $1, updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
       `, [derivError.message, operation.id]);
 
@@ -273,7 +276,7 @@ router.post('/:id/stop', authenticateToken, async (req, res) => {
         // Atualizar operação
         await query(`
           UPDATE operations 
-          SET status = 'stopped', updated_at = NOW()
+          SET status = 'stopped', updated_at = CURRENT_TIMESTAMP
           WHERE id = $1
         `, [id]);
 
@@ -291,7 +294,7 @@ router.post('/:id/stop', authenticateToken, async (req, res) => {
       // Apenas atualizar status se não tem contract_id
       await query(`
         UPDATE operations 
-        SET status = 'stopped', updated_at = NOW()
+        SET status = 'stopped', updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
       `, [id]);
 
