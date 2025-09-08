@@ -34,7 +34,7 @@ router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
 
     const user = userResult.rows[0];
 
-    if (!user.deriv_connected) {
+    if (!user.deriv_connected && user.deriv_connected !== true && user.deriv_connected !== 1) {
       return res.status(400).json({ error: 'Conta Deriv não conectada' });
     }
 
@@ -563,7 +563,7 @@ router.get('/account-info', authenticateToken, async (req, res) => {
 
     const user = userResult.rows[0];
 
-    if (!user.deriv_connected) {
+    if (!user.deriv_connected && user.deriv_connected !== true && user.deriv_connected !== 1) {
       return res.status(400).json({ error: 'Conta Deriv não conectada' });
     }
 
@@ -653,7 +653,7 @@ router.get('/trading-stats', authenticateToken, async (req, res) => {
 
     const user = userResult.rows[0];
 
-    if (!user.deriv_connected) {
+    if (!user.deriv_connected && user.deriv_connected !== true && user.deriv_connected !== 1) {
       return res.status(400).json({ error: 'Conta Deriv não conectada' });
     }
 

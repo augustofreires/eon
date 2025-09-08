@@ -270,7 +270,7 @@ router.post('/deriv/callback', authenticateToken, async (req, res) => {
         UPDATE users 
         SET deriv_access_token = $1, 
             deriv_account_id = $2, 
-            deriv_connected = 1,
+            deriv_connected = true,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $3
       `, [token1, accounts[0]?.loginid || '', userId]);
@@ -305,7 +305,7 @@ router.post('/deriv/disconnect', authenticateToken, async (req, res) => {
       UPDATE users 
       SET deriv_access_token = NULL, 
           deriv_account_id = NULL, 
-          deriv_connected = 0,
+          deriv_connected = false,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `, [userId]);

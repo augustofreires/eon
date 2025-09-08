@@ -76,7 +76,11 @@
       "Bash(open http://localhost:3000/forgot-password)",
       "WebFetch(domain:contabo.com)",
       "Bash(git remote set-url:*)",
-      "WebFetch(domain:afiliagreen.com.br)"
+      "WebFetch(domain:afiliagreen.com.br)",
+      "Read(//var/folders/2t/hfcxcz6j5ql9jvl_2fjhsn0c0000gn/T/TemporaryItems/NSIRD_screencaptureui_VA03Ez/**)",
+      "Bash(sudo rm:*)",
+      "Bash(sudo cp:*)",
+      "Bash(sudo chown:*)"
     ],
     "deny": [],
     "ask": []

@@ -89,9 +89,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setLoading(true);
       
-      // Usar rota específica baseada no tipo de usuário
-      const endpoint = isAdmin ? '/api/auth/login' : '/api/auth/client-login';
-      const response = await axios.post(endpoint, { email, password });
+      // Usar apenas uma rota de login para todos os tipos de usuário
+      const response = await axios.post('/api/auth/login', { email, password, isAdmin });
       
       const { token, user: userData } = response.data;
       
