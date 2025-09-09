@@ -8,21 +8,33 @@ const { getSocketIO } = require('../socketManager');
 const router = express.Router();
 
 // Iniciar operação do bot
-router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
+router.post('/start', authenticateToken, async (req, res) => {
   try {
-    const { bot_id, entry_amount, martingale, max_gain, max_loss } = req.body;
+    const { botId, config } = req.body;
+    const { initial_stake, max_stake, profit_threshold, loss_threshold } = config || {};
+    
+    console.log('🚀 Starting bot operation:', {
+      botId,
+      userId: req.user.id,
+      config
+    });
     const userId = req.user.id;
 
     // Validar dados
-    if (!bot_id || !entry_amount) {
-      return res.status(400).json({ error: 'Bot ID e valor de entrada são obrigatórios' });
+    if (!botId || !initial_stake) {
+      console.error('❌ Dados inválidos:', { botId, initial_stake });
+      return res.status(400).json({ error: 'Bot ID e valor inicial são obrigatórios' });
     }
 
     // Buscar bot
-    const botResult = await query('SELECT * FROM bots WHERE id = $1', [bot_id]);
+    console.log('🔍 Buscando bot com ID:', botId);
+    const botResult = await query('SELECT * FROM bots WHERE id = $1', [botId]);
     if (botResult.rows.length === 0) {
+      console.error('❌ Bot não encontrado:', botId);
       return res.status(404).json({ error: 'Bot não encontrado' });
     }
+    
+    console.log('✅ Bot encontrado:', botResult.rows[0].name);
 
     const bot = botResult.rows[0];
 
@@ -39,11 +51,12 @@ router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
     }
 
     // Criar operação
+    console.log('💾 Criando registro de operação no banco...');
     const operationResult = await query(`
       INSERT INTO operations (user_id, bot_id, entry_amount, martingale, max_gain, max_loss, status, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, 'running', CURRENT_TIMESTAMP)
       RETURNING *
-    `, [userId, bot_id, entry_amount, martingale || false, max_gain, max_loss]);
+    `, [userId, botId, initial_stake, config?.martingale_multiplier > 1, profit_threshold, loss_threshold]);
 
     const operation = operationResult.rows[0];
 
@@ -68,13 +81,13 @@ router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
       const currency = balanceResponse.balance.currency;
 
       // Verificar se tem saldo suficiente
-      if (balance < entry_amount) {
+      if (balance < parseFloat(initial_stake)) {
         throw new Error('Saldo insuficiente para esta operação');
       }
 
       // Fazer proposta de compra (exemplo para Rise/Fall)
       const proposalResponse = await derivApi.getProposal({
-        amount: entry_amount,
+        amount: parseFloat(initial_stake),
         basis: "stake",
         contract_type: "CALL", // ou "PUT" para Fall
         currency: currency,
@@ -90,7 +103,7 @@ router.post('/start', authenticateToken, requireBotAccess, async (req, res) => {
       // Comprar o contrato
       const buyResponse = await derivApi.buyContract(
         proposalResponse.proposal.id,
-        entry_amount
+        parseFloat(initial_stake)
       );
 
       if (buyResponse.error) {
@@ -241,7 +254,98 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Parar operação
+// Parar operação ativa do usuário (sem ID específico)
+router.post('/stop', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    console.log('🛑 Tentando parar operação ativa para usuário:', userId);
+
+    // Buscar operação ativa do usuário
+    const operationResult = await query(`
+      SELECT o.*, u.deriv_access_token 
+      FROM operations o
+      JOIN users u ON o.user_id = u.id
+      WHERE o.user_id = $1 AND o.status = 'running'
+      ORDER BY o.created_at DESC
+      LIMIT 1
+    `, [userId]);
+
+    if (operationResult.rows.length === 0) {
+      console.log('❌ Nenhuma operação ativa encontrada para usuário:', userId);
+      return res.status(404).json({ error: 'Nenhuma operação ativa encontrada' });
+    }
+
+    const operation = operationResult.rows[0];
+    console.log('✅ Operação ativa encontrada:', operation.id);
+
+    // Se tem contract_id, tentar vender na Deriv
+    if (operation.deriv_contract_id && operation.deriv_access_token) {
+      try {
+        console.log('📞 Tentando vender contrato na Deriv:', operation.deriv_contract_id);
+        const derivApi = new DerivAPI();
+        await derivApi.connect();
+        await derivApi.authorize(operation.deriv_access_token);
+
+        // Vender o contrato
+        const sellResponse = await derivApi.sellContract(operation.deriv_contract_id, 0);
+        
+        derivApi.disconnect();
+        console.log('✅ Contrato vendido com sucesso na Deriv');
+
+        // Atualizar operação
+        await query(`
+          UPDATE operations 
+          SET status = 'stopped', updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `, [operation.id]);
+
+        res.json({
+          success: true,
+          message: 'Operação parada com sucesso',
+          operation_id: operation.id,
+          sell_info: sellResponse.sell
+        });
+
+      } catch (derivError) {
+        console.error('❌ Erro ao vender contrato na Deriv:', derivError);
+        
+        // Mesmo com erro na Deriv, marcar como parada localmente
+        await query(`
+          UPDATE operations 
+          SET status = 'stopped', error_message = $1, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2
+        `, [derivError.message, operation.id]);
+        
+        res.json({
+          success: true,
+          message: 'Operação parada localmente (erro na Deriv: ' + derivError.message + ')',
+          operation_id: operation.id
+        });
+      }
+    } else {
+      console.log('⚠️ Operação sem contract_id, parando apenas localmente');
+      // Apenas atualizar status se não tem contract_id
+      await query(`
+        UPDATE operations 
+        SET status = 'stopped', updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `, [operation.id]);
+
+      res.json({
+        success: true,
+        message: 'Operação parada com sucesso',
+        operation_id: operation.id
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao parar operação:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Parar operação específica por ID
 router.post('/:id/stop', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;

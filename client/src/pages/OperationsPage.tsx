@@ -48,6 +48,7 @@ import {
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Bot {
   id: number;
@@ -68,6 +69,7 @@ const OperationsPage: React.FC = () => {
   console.log('OperationsPage: Componente iniciando - versão restaurada...');
   
   const { t } = useLanguage();
+  const { user, updateUser } = useAuth();
   const [derivConnected, setDerivConnected] = useState(false);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
@@ -115,19 +117,36 @@ const OperationsPage: React.FC = () => {
 
   const checkDerivConnection = async () => {
     try {
-      const response = await axios.get('/api/operations/account-info');
-      setDerivConnected(true);
-      console.log('Conexão Deriv verificada:', response.data);
-    } catch (error) {
+      console.log('🔍 Verificando status da conexão Deriv...');
+      const response = await axios.get('/api/auth/deriv/status');
+      const isConnected = response.data.connected;
+      setDerivConnected(isConnected);
+      console.log('✅ Status Deriv verificado:', {
+        connected: isConnected,
+        account_id: response.data.account_id,
+        response: response.data
+      });
+      return isConnected;
+    } catch (error: any) {
+      console.error('❌ Erro ao verificar status Deriv:', error.response?.data || error.message);
       setDerivConnected(false);
-      console.log('Deriv não conectado');
+      return false;
     }
   };
 
   const handleStartOperation = async () => {
-    if (!selectedBot) return;
+    if (!selectedBot) {
+      toast.error('Selecione um bot antes de iniciar a operação');
+      return;
+    }
+    
+    if (!derivConnected) {
+      toast.error('Conecte sua conta Deriv antes de iniciar operações');
+      return;
+    }
     
     try {
+      console.log('🚀 Iniciando operação com bot:', selectedBot.name);
       setOperationRunning(true);
       
       // Enviar configurações do bot para o backend
@@ -137,7 +156,7 @@ const OperationsPage: React.FC = () => {
       });
       
       toast.success('Operação iniciada com sucesso!');
-      console.log('Operação iniciada:', response.data);
+      console.log('✅ Operação iniciada:', response.data);
       
     } catch (error: any) {
       console.error('Erro ao iniciar operação:', error);
@@ -164,11 +183,16 @@ const OperationsPage: React.FC = () => {
 
   const handleConnectDeriv = async () => {
     try {
+      console.log('🔗 Iniciando processo de conexão OAuth com Deriv...');
+      
       // Obter URL de autorização do backend
+      console.log('🔄 Solicitando URL de autorização...');
       const response = await axios.get('/api/auth/deriv/authorize');
       const { auth_url } = response.data;
+      console.log('✅ URL de autorização obtida:', auth_url);
       
       // Abrir popup para autorização
+      console.log('🌐 Abrindo popup OAuth...');
       const popup = window.open(
         auth_url,
         'deriv-oauth',
@@ -176,28 +200,72 @@ const OperationsPage: React.FC = () => {
       );
 
       if (!popup) {
+        console.error('❌ Popup foi bloqueado pelo navegador');
         toast.error('Popup bloqueado. Permita popups para conectar com a Deriv.');
         return;
       }
+      
+      console.log('✅ Popup OAuth aberto com sucesso');
 
       // Escutar mensagem do popup
       const handleMessage = async (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
+        console.log('🔄 PostMessage recebido:', {
+          origin: event.origin,
+          expectedOrigin: window.location.origin,
+          type: event.data?.type,
+          data: event.data
+        });
+        
+        if (event.origin !== window.location.origin) {
+          console.log('❌ Origem rejeitada:', event.origin, '!==', window.location.origin);
+          return;
+        }
         
         if (event.data.type === 'deriv-oauth-callback') {
+          console.log('✅ Callback OAuth recebido, processando...');
           popup.close();
           
           try {
+            console.log('🔄 Enviando dados OAuth para o backend...');
             // Enviar dados OAuth para o backend
-            await axios.post('/api/auth/deriv/callback', {
+            const callbackResponse = await axios.post('/api/auth/deriv/callback', {
               accounts: event.data.accounts,
               token1: event.data.token1
             });
             
+            console.log('✅ Callback OAuth processado com sucesso:', callbackResponse.data);
             toast.success('Conta Deriv conectada com sucesso!');
-            // Verificar conexão novamente
-            checkDerivConnection();
+            
+            // Verificar conexão novamente com delay para garantir que o backend atualizou
+            setTimeout(async () => {
+              console.log('🔄 Revalidating Deriv connection after OAuth...');
+              const isConnected = await checkDerivConnection();
+              if (isConnected) {
+                console.log('🎉 Deriv connection confirmed after OAuth!');
+                
+                // Atualizar contexto de autenticação
+                if (user && updateUser) {
+                  updateUser({
+                    ...user,
+                    deriv_connected: true,
+                    deriv_account_id: callbackResponse.data.account_info?.loginid
+                  });
+                  console.log('🔄 Contexto de autenticação atualizado com dados Deriv');
+                }
+              } else {
+                console.warn('⚠️ Connection check failed after successful OAuth');
+                toast('Conexão OAuth bem-sucedida, mas verificação falhou. Tente recarregar a página.', {
+                  icon: '⚠️',
+                  duration: 4000,
+                  style: {
+                    background: '#ffc107',
+                    color: '#000'
+                  }
+                });
+              }
+            }, 1000);
           } catch (error: any) {
+            console.error('❌ Erro no callback OAuth:', error.response?.data || error.message);
             const message = error.response?.data?.error || 'Erro ao conectar com a Deriv';
             toast.error(message);
           }
@@ -303,18 +371,39 @@ const OperationsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    console.log('OperationsPage: useEffect executando...');
-    loadAvailableBots();
-    loadDerivConfig();
-    checkDerivConnection();
-    connectToDerivWS();
+    console.log('🚀 OperationsPage: Componente inicializando...');
     
-    // Verificar conexão Deriv a cada 10 segundos
+    // Inicializar dados da página
+    const initializeOperationsPage = async () => {
+      try {
+        console.log('🔄 Carregando configurações iniciais...');
+        await Promise.all([
+          loadAvailableBots(),
+          loadDerivConfig()
+        ]);
+        
+        console.log('🔍 Verificando status inicial da conexão Deriv...');
+        await checkDerivConnection();
+        
+        console.log('🌐 Iniciando conexão WebSocket...');
+        connectToDerivWS();
+        
+        console.log('✅ Inicialização da OperationsPage concluída');
+      } catch (error) {
+        console.error('❌ Erro na inicialização:', error);
+      }
+    };
+    
+    initializeOperationsPage();
+    
+    // Verificar conexão Deriv a cada 30 segundos (reduzido de 10s para performance)
     const interval = setInterval(() => {
+      console.log('⏰ Verificação periódica da conexão Deriv...');
       checkDerivConnection();
-    }, 10000);
+    }, 30000);
     
     return () => {
+      console.log('🧹 Limpando recursos da OperationsPage...');
       if (wsRef.current) {
         wsRef.current.close();
       }
