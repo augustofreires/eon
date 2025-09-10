@@ -46,8 +46,23 @@ router.post('/start', authenticateToken, async (req, res) => {
 
     const user = userResult.rows[0];
 
-    if (!user.deriv_connected && user.deriv_connected !== true && user.deriv_connected !== 1) {
-      return res.status(400).json({ error: 'Conta Deriv não conectada' });
+    // Verificar conexão Deriv de forma mais robusta
+    const isDerivConnected = !!(user.deriv_connected && (user.deriv_connected === true || user.deriv_connected === 1));
+    const hasDerivToken = !!user.deriv_access_token;
+    
+    console.log('🔍 Verificando conexão Deriv:', {
+      deriv_connected: user.deriv_connected,
+      isDerivConnected,
+      hasDerivToken,
+      account_id: user.deriv_account_id
+    });
+
+    if (!isDerivConnected || !hasDerivToken) {
+      console.error('❌ Conta Deriv não conectada:', {
+        isDerivConnected,
+        hasDerivToken
+      });
+      return res.status(400).json({ error: 'Conta Deriv não conectada. Conecte sua conta na seção de Operações.' });
     }
 
     // Criar operação

@@ -801,7 +801,7 @@ const OperationsPage: React.FC = () => {
 
                   {/* Lista de bots */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '300px', overflowY: 'auto' }}>
-                    {availableBots.map((bot) => (
+                    {(availableBots || []).map((bot) => (
                       <Box
                         key={bot.id}
                         onClick={() => setSelectedBot(bot)}

@@ -80,7 +80,10 @@
       "Read(//var/folders/2t/hfcxcz6j5ql9jvl_2fjhsn0c0000gn/T/TemporaryItems/NSIRD_screencaptureui_VA03Ez/**)",
       "Bash(sudo rm:*)",
       "Bash(sudo cp:*)",
-      "Bash(sudo chown:*)"
+      "Bash(sudo chown:*)",
+      "Bash(chmod:*)",
+      "Bash(/Users/augustofreires/Desktop/deploy-vps.sh:*)",
+      "Bash(expect:*)"
     ],
     "deny": [],
     "ask": []

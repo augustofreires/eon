@@ -302,6 +302,7 @@ function AppContent() {
         
         {/* Rota pública para callback OAuth */}
         <Route path="/auth/deriv/callback" element={<DerivCallback />} />
+        <Route path="/operations/auth/deriv/callback" element={<DerivCallback />} />
       </Routes>
       <Toaster position="top-right" />
     </Box>
