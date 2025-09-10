@@ -66,8 +66,6 @@ interface ChartData {
 }
 
 const OperationsPage: React.FC = () => {
-  console.log('OperationsPage: Componente iniciando - versão restaurada...');
-  
   const { t } = useLanguage();
   const { user, updateUser } = useAuth();
   const [derivConnected, setDerivConnected] = useState(false);
@@ -92,8 +90,10 @@ const OperationsPage: React.FC = () => {
     should_stop_on_profit: true,
     restart_on_error: true
   });
+  const [isInitialized, setIsInitialized] = useState(false);
   
   const wsRef = useRef<WebSocket | null>(null);
+  const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadAvailableBots = async () => {
     try {
@@ -115,20 +115,26 @@ const OperationsPage: React.FC = () => {
     }
   };
 
-  const checkDerivConnection = async () => {
+  const checkDerivConnection = async (silent = false) => {
     try {
-      console.log('🔍 Verificando status da conexão Deriv...');
+      if (!silent) {
+        console.log('🔍 Verificando status da conexão Deriv...');
+      }
       const response = await axios.get('/api/auth/deriv/status');
       const isConnected = response.data.connected;
       setDerivConnected(isConnected);
-      console.log('✅ Status Deriv verificado:', {
-        connected: isConnected,
-        account_id: response.data.account_id,
-        response: response.data
-      });
+      if (!silent) {
+        console.log('✅ Status Deriv verificado:', {
+          connected: isConnected,
+          account_id: response.data.account_id,
+          response: response.data
+        });
+      }
       return isConnected;
     } catch (error: any) {
-      console.error('❌ Erro ao verificar status Deriv:', error.response?.data || error.message);
+      if (!silent) {
+        console.error('❌ Erro ao verificar status Deriv:', error.response?.data || error.message);
+      }
       setDerivConnected(false);
       return false;
     }
@@ -236,34 +242,31 @@ const OperationsPage: React.FC = () => {
             console.log('✅ Callback OAuth processado com sucesso:', callbackResponse.data);
             toast.success('Conta Deriv conectada com sucesso!');
             
-            // Verificar conexão novamente com delay para garantir que o backend atualizou
+            // Atualizar estado imediatamente e depois revalidar
+            setDerivConnected(true);
+            
+            // Atualizar contexto de autenticação imediatamente
+            if (user && updateUser) {
+              updateUser({
+                ...user,
+                deriv_connected: true,
+                deriv_account_id: callbackResponse.data.account_info?.loginid
+              });
+              console.log('🔄 Contexto de autenticação atualizado com dados Deriv');
+            }
+            
+            // Verificar conexão novamente com delay para confirmar no backend
             setTimeout(async () => {
               console.log('🔄 Revalidating Deriv connection after OAuth...');
-              const isConnected = await checkDerivConnection();
+              const isConnected = await checkDerivConnection(false);
               if (isConnected) {
                 console.log('🎉 Deriv connection confirmed after OAuth!');
-                
-                // Atualizar contexto de autenticação
-                if (user && updateUser) {
-                  updateUser({
-                    ...user,
-                    deriv_connected: true,
-                    deriv_account_id: callbackResponse.data.account_info?.loginid
-                  });
-                  console.log('🔄 Contexto de autenticação atualizado com dados Deriv');
-                }
               } else {
-                console.warn('⚠️ Connection check failed after successful OAuth');
-                toast('Conexão OAuth bem-sucedida, mas verificação falhou. Tente recarregar a página.', {
-                  icon: '⚠️',
-                  duration: 4000,
-                  style: {
-                    background: '#ffc107',
-                    color: '#000'
-                  }
-                });
+                console.warn('⚠️ Connection check failed after successful OAuth - but proceeding as OAuth was successful');
+                // Manter como conectado se OAuth foi bem-sucedido
+                setDerivConnected(true);
               }
-            }, 1000);
+            }, 1500);
           } catch (error: any) {
             console.error('❌ Erro no callback OAuth:', error.response?.data || error.message);
             const message = error.response?.data?.error || 'Erro ao conectar com a Deriv';
@@ -371,7 +374,15 @@ const OperationsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    console.log('🚀 OperationsPage: Componente inicializando...');
+    if (isInitialized) return;
+    
+    console.log('🚀 OperationsPage: Inicializando componente...');
+    
+    // Verificar estado inicial do contexto de autenticação
+    if (user?.deriv_connected) {
+      console.log('🔗 Usuário já tem Deriv conectado no contexto, sincronizando...');
+      setDerivConnected(true);
+    }
     
     // Inicializar dados da página
     const initializeOperationsPage = async () => {
@@ -383,11 +394,12 @@ const OperationsPage: React.FC = () => {
         ]);
         
         console.log('🔍 Verificando status inicial da conexão Deriv...');
-        await checkDerivConnection();
+        await checkDerivConnection(false);
         
         console.log('🌐 Iniciando conexão WebSocket...');
         connectToDerivWS();
         
+        setIsInitialized(true);
         console.log('✅ Inicialização da OperationsPage concluída');
       } catch (error) {
         console.error('❌ Erro na inicialização:', error);
@@ -396,20 +408,32 @@ const OperationsPage: React.FC = () => {
     
     initializeOperationsPage();
     
-    // Verificar conexão Deriv a cada 30 segundos (reduzido de 10s para performance)
-    const interval = setInterval(() => {
-      console.log('⏰ Verificação periódica da conexão Deriv...');
-      checkDerivConnection();
-    }, 30000);
+    // Verificar conexão Deriv a cada 60 segundos (aumentado para reduzir logs)
+    statusCheckIntervalRef.current = setInterval(() => {
+      checkDerivConnection(true); // silent = true para reduzir logs
+    }, 60000);
     
     return () => {
       console.log('🧹 Limpando recursos da OperationsPage...');
       if (wsRef.current) {
         wsRef.current.close();
       }
-      clearInterval(interval);
+      if (statusCheckIntervalRef.current) {
+        clearInterval(statusCheckIntervalRef.current);
+      }
     };
-  }, []);
+  }, [isInitialized, user]);
+
+  // Sincronizar com mudanças no contexto de autenticação
+  useEffect(() => {
+    if (user?.deriv_connected && !derivConnected) {
+      console.log('🔄 Sincronizando estado Deriv com contexto de autenticação...');
+      setDerivConnected(true);
+    } else if (!user?.deriv_connected && derivConnected) {
+      console.log('🔄 Desconectando Deriv conforme contexto de autenticação...');
+      setDerivConnected(false);
+    }
+  }, [user?.deriv_connected, derivConnected]);
 
   useEffect(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

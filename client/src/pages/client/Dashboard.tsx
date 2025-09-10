@@ -116,12 +116,19 @@ const ClientDashboard: React.FC = () => {
         setLocalUser(JSON.parse(userData));
       }
 
-      // Carregar informações da conta na Corretora
-      try {
-        const response = await axios.get('/api/operations/account-info');
-        setAccountInfo(response.data);
-      } catch (error) {
-        console.log('Conta na Corretora não conectada');
+      // Carregar informações da conta na Corretora (apenas se usuário estiver autenticado)
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const response = await axios.get('/api/operations/account-info');
+          setAccountInfo(response.data);
+        } catch (error: any) {
+          if (error.response?.status === 400) {
+            console.log('Conta Deriv não conectada ainda');
+          } else {
+            console.error('Erro ao carregar informações da conta Deriv:', error.response?.data || error.message);
+          }
+        }
       }
     } catch (error) {
       console.error('Erro ao carregar dados do usuário:', error);
