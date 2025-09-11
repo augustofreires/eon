@@ -5,8 +5,107 @@ const { query } = require('../database/connection');
 const { generateToken } = require('../middleware/auth');
 const axios = require('axios');
 const { authenticateToken } = require('../middleware/auth');
+const WebSocket = require('ws');
 
 const router = express.Router();
+
+// Função para validar token com Deriv WebSocket API
+const validateTokenWithDerivAPI = (token) => {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=82349');
+    
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error('Timeout: WebSocket connection took too long'));
+    }, 10000); // 10 seconds timeout
+    
+    ws.onopen = () => {
+      console.log('🔗 Connected to Deriv WebSocket for token validation');
+      
+      // Send authorize request
+      const authorizeRequest = {
+        authorize: token,
+        req_id: Date.now()
+      };
+      
+      ws.send(JSON.stringify(authorizeRequest));
+    };
+    
+    ws.onmessage = (event) => {
+      try {
+        const response = JSON.parse(event.data);
+        console.log('📨 Deriv WebSocket response:', response);
+        
+        clearTimeout(timeout);
+        
+        if (response.error) {
+          console.error('❌ Deriv API error:', response.error);
+          ws.close();
+          reject(new Error(`Deriv API error: ${response.error.message}`));
+          return;
+        }
+        
+        if (response.authorize) {
+          console.log('✅ Token validation successful:', {
+            loginid: response.authorize.loginid,
+            email: response.authorize.email,
+            country: response.authorize.country,
+            currency: response.authorize.currency,
+            is_virtual: response.authorize.is_virtual
+          });
+          
+          ws.close();
+          resolve({
+            loginid: response.authorize.loginid,
+            email: response.authorize.email,
+            currency: response.authorize.currency,
+            country: response.authorize.country,
+            is_virtual: response.authorize.is_virtual,
+            fullname: response.authorize.fullname,
+            token: token
+          });
+        }
+      } catch (error) {
+        clearTimeout(timeout);
+        console.error('❌ Error parsing WebSocket message:', error);
+        ws.close();
+        reject(error);
+      }
+    };
+    
+    ws.onerror = (error) => {
+      clearTimeout(timeout);
+      console.error('❌ WebSocket error:', error);
+      reject(new Error('WebSocket connection error'));
+    };
+    
+    ws.onclose = (code, reason) => {
+      clearTimeout(timeout);
+      console.log('🔌 WebSocket closed:', code, reason);
+    };
+  });
+};
+
+// Função auxiliar para sanitizar entrada
+const sanitizeInput = (input) => {
+  if (typeof input !== 'string') return '';
+  return input.replace(/[<>'"&]/g, (match) => {
+    const escapes = {
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#x27;',
+      '&': '&amp;'
+    };
+    return escapes[match];
+  });
+};
+
+// Simples função de rate limiting (comentada para evitar erros com proxy)
+// const checkRateLimit = (ip, maxAttempts = 10) => {
+//   // Rate limiting desabilitado temporariamente
+//   return true;
+// };
 
 // Login de administrador
 router.post('/login', [
@@ -230,109 +329,364 @@ router.post('/logout', (req, res) => {
 // Integração Deriv OAuth
 router.get('/deriv/authorize', authenticateToken, async (req, res) => {
   try {
-    const derivAppId = process.env.DERIV_APP_ID || '82349';
-    const redirectUri = encodeURIComponent(process.env.DERIV_OAUTH_REDIRECT_URL || 'https://iaeon.site/operations/auth/deriv/callback');
+    // Rate limiting desabilitado temporariamente
+    // if (!checkRateLimit(req.ip, 5)) {
+    //   return res.status(429).json({ error: 'Muitas tentativas. Tente novamente em 1 minuto.' });
+    // }
+    // Validar variáveis de ambiente obrigatórias
+    if (!process.env.DERIV_APP_ID) {
+      console.error('❌ DERIV_APP_ID não configurado');
+      return res.status(500).json({ error: 'Configuração OAuth da Deriv incompleta' });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error('❌ JWT_SECRET não configurado');
+      return res.status(500).json({ error: 'Configuração JWT incompleta' });
+    }
+
+    const derivAppId = process.env.DERIV_APP_ID;
+    const redirectUri = process.env.DERIV_OAUTH_REDIRECT_URL || `${process.env.CORS_ORIGIN || 'https://iaeon.site'}/operations/auth/deriv/callback`;
+    
+    // Gerar um token JWT temporário com userId para identificar no callback
+    const jwt = require('jsonwebtoken');
+    const userToken = jwt.sign(
+      { 
+        userId: req.user.id,
+        iat: Math.floor(Date.now() / 1000),
+        purpose: 'deriv_oauth'
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' } // Token válido por 15 minutos
+    );
     
     console.log('🔗 Gerando URL OAuth da Deriv:', {
       app_id: derivAppId,
-      redirect_uri: redirectUri
+      redirect_uri: redirectUri,
+      userId: req.user.id,
+      timestamp: new Date().toISOString()
     });
     
-    // URL de autorização da Deriv
-    const authUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${derivAppId}&l=pt&brand=deriv&redirect_uri=${redirectUri}`;
+    // URL de autorização da Deriv com user_token no state parameter
+    const encodedRedirectUri = encodeURIComponent(redirectUri);
+    const encodedState = encodeURIComponent(userToken);
+    const authUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${derivAppId}&l=pt&brand=deriv&redirect_uri=${encodedRedirectUri}&state=${encodedState}`;
     
-    console.log('✅ URL OAuth gerada:', authUrl);
+    console.log('✅ URL OAuth gerada com sucesso');
     
     res.json({
       success: true,
-      auth_url: authUrl
+      auth_url: authUrl,
+      expires_in: 900 // 15 minutos em segundos
     });
 
   } catch (error) {
-    console.error('Erro ao gerar URL de autorização Deriv:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('❌ Erro ao gerar URL de autorização Deriv:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      message: 'Falha ao gerar URL de autorização OAuth'
+    });
   }
 });
 
-// Callback OAuth da Deriv
-router.post('/deriv/callback', authenticateToken, async (req, res) => {
+// Callback OAuth da Deriv (GET sem autenticação)
+router.get('/deriv/callback', async (req, res) => {
   try {
+    // Rate limiting desabilitado temporariamente
+    // if (!checkRateLimit(req.ip, 10)) {
+    //   const rateLimitHtml = `
+    //     <!DOCTYPE html>
+    //     <html>
+    //     <head><title>Rate Limit</title><meta charset="utf-8"></head>
+    //     <body>
+    //       <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
+    //         <h2>⏱️ Muitas Tentativas</h2>
+    //         <p>Aguarde 1 minuto antes de tentar novamente.</p>
+    //       </div>
+    //       <script>
+    //         if (window.opener) {
+    //           window.opener.postMessage({
+    //             type: 'deriv_oauth_error',
+    //             error: 'Rate limit excedido'
+    //           }, '*');
+    //         }
+    //         setTimeout(() => window.close(), 3000);
+    //       </script>
+    //     </body>
+    //     </html>
+    //   `;
+    //   return res.status(429).send(rateLimitHtml);
+    // }
     console.log('🔄 Processando callback OAuth da Deriv...', {
-      userId: req.user.id,
-      body: req.body
+      query: Object.keys(req.query),
+      timestamp: new Date().toISOString()
     });
-    
-    // Extract token and account data from various possible formats
+
+    // Função auxiliar para retornar HTML de erro
+    const sendErrorResponse = (errorMessage, details = null) => {
+      console.error('❌ Callback OAuth erro:', errorMessage, details);
+      const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Erro na Conexão Deriv</title>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; margin-top: 100px; color: #333; }
+            .error { color: #d32f2f; }
+          </style>
+        </head>
+        <body>
+          <div class="error">
+            <h2>❌ Erro na Conexão</h2>
+            <p>${errorMessage}</p>
+            <p><small>Esta janela será fechada automaticamente...</small></p>
+          </div>
+          <script>
+            try {
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'deriv_oauth_error',
+                  error: '${errorMessage}',
+                  details: ${details ? JSON.stringify(details) : 'null'}
+                }, '*');
+              }
+            } catch (e) {
+              console.error('Erro ao enviar postMessage:', e);
+            }
+            setTimeout(() => window.close(), 3000);
+          </script>
+        </body>
+        </html>
+      `;
+      return res.send(errorHtml);
+    };
+
+    // Validar se temos JWT_SECRET
+    if (!process.env.JWT_SECRET) {
+      return sendErrorResponse('Configuração do servidor incompleta');
+    }
+
+    // Extract token and account data from URL parameters
     let token = null;
     let accountId = null;
-    const userId = req.user.id;
+    let userId = null;
+    let isDemo = false;
 
-    // Handle different OAuth response formats
-    if (req.body.token1) {
-      // Format: { token1: "abc123", acct1: "CR123" }
-      token = req.body.token1;
-      accountId = req.body.acct1;
-    } else if (req.body.accounts && req.body.accounts.length > 0) {
-      // Format: { accounts: [{ token: "abc123", loginid: "CR123" }] }
-      token = req.body.accounts[0].token;
-      accountId = req.body.accounts[0].loginid;
-    } else if (req.body.access_token) {
-      // Format: { access_token: "abc123", account_id: "CR123" }
-      token = req.body.access_token;
-      accountId = req.body.account_id;
-    } else if (typeof req.body === 'string') {
-      // Parse URL-encoded format: "acct1=CR123&token1=abc123"
-      const params = new URLSearchParams(req.body);
-      token = params.get('token1');
-      accountId = params.get('acct1');
+    // Handle different OAuth response formats from URL params (with sanitization)
+    if (req.query.token1) {
+      // Format: ?token1=abc123&acct1=CR123
+      token = sanitizeInput(req.query.token1);
+      accountId = sanitizeInput(req.query.acct1);
+    } else if (req.query.access_token) {
+      // Format: ?access_token=abc123&account_id=CR123
+      token = sanitizeInput(req.query.access_token);
+      accountId = sanitizeInput(req.query.account_id);
+    } else if (req.query.code) {
+      // Format: ?code=abc123 (OAuth2 authorization code)
+      console.log('📝 Recebido authorization code');
+      token = sanitizeInput(req.query.code); // For now, treat code as token
+    }
+
+    // Check for error in OAuth response
+    if (req.query.error) {
+      return sendErrorResponse(`Erro OAuth: ${sanitizeInput(req.query.error)}`, sanitizeInput(req.query.error_description));
+    }
+
+    // Get user ID from state parameter (JWT token)
+    if (req.query.state) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(req.query.state, process.env.JWT_SECRET);
+        
+        // Validar se o token é para OAuth da Deriv
+        if (decoded.purpose !== 'deriv_oauth') {
+          return sendErrorResponse('Token de estado inválido');
+        }
+        
+        userId = decoded.userId;
+        console.log('✅ User ID extraído do state parameter:', userId);
+      } catch (jwtError) {
+        console.error('❌ Token JWT inválido no state parameter:', jwtError);
+        return sendErrorResponse('Token de autorização inválido ou expirado');
+      }
+    } else {
+      return sendErrorResponse('Parâmetro de estado não encontrado');
     }
 
     if (!token) {
-      console.error('❌ Token OAuth não encontrado:', req.body);
-      return res.status(400).json({ error: 'Token de acesso não encontrado nos dados OAuth' });
+      return sendErrorResponse('Token de acesso não encontrado na resposta OAuth');
+    }
+
+    if (!userId) {
+      return sendErrorResponse('Identificação do usuário não encontrada');
+    }
+
+    // Determinar se é conta demo
+    if (accountId) {
+      isDemo = accountId.startsWith('VR') || accountId.startsWith('VRTC');
     }
 
     console.log('✅ Dados OAuth extraídos:', {
-      accountId: accountId,
-      token: token?.substring(0, 10) + '...',
-      userId
+      accountId: accountId || 'N/A',
+      tokenLength: token?.length || 0,
+      userId: userId,
+      isDemo: isDemo
     });
 
-    // Simplified validation - skip external validation for now
-    // Since OAuth already validates the token, we can trust it
+    // Validar token com Deriv WebSocket API
     try {
-      console.log('💾 Atualizando informações do usuário no banco (sem validação externa)...');
+      console.log('🔄 Validating token with Deriv WebSocket API...');
       
-      // Update user with Deriv information
-      await query(`
+      const accountData = await validateTokenWithDerivAPI(token);
+      
+      console.log('✅ Token validation successful, saving to database...');
+      
+      // Usar dados validados da API
+      const validatedAccountId = accountData.loginid;
+      const validatedIsDemo = accountData.is_virtual;
+      
+      // First, let's add the new columns if they don't exist
+      try {
+        await query(`
+          ALTER TABLE users 
+          ADD COLUMN IF NOT EXISTS deriv_access_token VARCHAR(500),
+          ADD COLUMN IF NOT EXISTS deriv_connected BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS deriv_email VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS deriv_currency VARCHAR(10),
+          ADD COLUMN IF NOT EXISTS deriv_country VARCHAR(10),
+          ADD COLUMN IF NOT EXISTS deriv_is_virtual BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS deriv_fullname VARCHAR(255)
+        `);
+        console.log('✅ Database columns ensured');
+      } catch (columnError) {
+        console.log('ℹ️ Database columns might already exist:', columnError.message);
+      }
+
+      const updateResult = await query(`
         UPDATE users 
         SET deriv_access_token = $1, 
             deriv_account_id = $2, 
             deriv_connected = $3,
+            deriv_email = $4,
+            deriv_currency = $5,
+            deriv_country = $6,
+            deriv_is_virtual = $7,
+            deriv_fullname = $8,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $4
-      `, [token, accountId, true, userId]);
+        WHERE id = $9
+        RETURNING id, email
+      `, [
+        token, 
+        validatedAccountId, 
+        true,
+        accountData.email,
+        accountData.currency,
+        accountData.country,
+        validatedIsDemo,
+        accountData.fullname,
+        userId
+      ]);
 
-      console.log('✅ Usuário atualizado com sucesso');
+      if (updateResult.rows.length === 0) {
+        return sendErrorResponse('Usuário não encontrado');
+      }
 
-      res.json({
-        success: true,
-        message: 'Conta Deriv conectada com sucesso!',
-        account_info: {
-          loginid: accountId,
-          is_demo: accountId?.startsWith('VR') || accountId?.startsWith('VRTC'),
-          connected: true
-        }
+      console.log('✅ User updated successfully with validated data:', {
+        email: updateResult.rows[0].email,
+        deriv_account: validatedAccountId,
+        is_virtual: validatedIsDemo
       });
 
-    } catch (dbError) {
-      console.error('❌ Erro ao atualizar banco de dados:', dbError);
-      res.status(500).json({ error: 'Erro ao salvar informações da conta Deriv' });
+      // Retornar página HTML de sucesso que comunica com a janela pai
+      const successHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Conexão Deriv - Sucesso</title>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; text-align: center; margin-top: 100px; color: #333; }
+            .success { color: #2e7d32; }
+            .account-info { background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px auto; max-width: 400px; }
+          </style>
+        </head>
+        <body>
+          <div class="success">
+            <h2>✅ Conta Deriv Conectada!</h2>
+            <p>Sua conta foi conectada com sucesso.</p>
+            <div class="account-info">
+              <strong>Conta:</strong> ${validatedAccountId}<br>
+              <strong>Tipo:</strong> ${validatedIsDemo ? 'Demo' : 'Real'}<br>
+              <strong>Moeda:</strong> ${accountData.currency}<br>
+              ${accountData.fullname ? `<strong>Nome:</strong> ${accountData.fullname}<br>` : ''}
+            </div>
+            <p><small>Esta janela será fechada automaticamente...</small></p>
+          </div>
+          <script>
+            try {
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'deriv_oauth_success',
+                  data: {
+                    token: '${token.substring(0, 10)}...',
+                    accountId: '${validatedAccountId}',
+                    connected: true,
+                    loginid: '${validatedAccountId}',
+                    is_demo: ${validatedIsDemo},
+                    currency: '${accountData.currency}',
+                    email: '${accountData.email}',
+                    validated: true
+                  }
+                }, '*');
+              }
+            } catch (e) {
+              console.error('Erro ao enviar postMessage:', e);
+            }
+            setTimeout(() => window.close(), 3000);
+          </script>
+        </body>
+        </html>
+      `;
+      
+      res.send(successHtml);
+
+    } catch (validationError) {
+      console.error('❌ Token validation failed:', validationError);
+      return sendErrorResponse(
+        'Token inválido ou expirado. Tente conectar novamente.', 
+        validationError.message
+      );
     }
 
   } catch (error) {
-    console.error('❌ Erro no callback Deriv:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('❌ Erro geral no callback Deriv:', error);
+    const errorHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Erro Interno</title>
+        <meta charset="utf-8">
+      </head>
+      <body>
+        <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
+          <h2>❌ Erro Interno do Servidor</h2>
+          <p>Ocorreu um erro inesperado. Tente novamente mais tarde.</p>
+        </div>
+        <script>
+          try {
+            if (window.opener) {
+              window.opener.postMessage({
+                type: 'deriv_oauth_error',
+                error: 'Erro interno do servidor'
+              }, '*');
+            }
+          } catch (e) {}
+          setTimeout(() => window.close(), 3000);
+        </script>
+      </body>
+      </html>
+    `;
+    res.send(errorHtml);
   }
 });
 
@@ -369,7 +723,8 @@ router.get('/deriv/status', authenticateToken, async (req, res) => {
     console.log('🔍 Verificando status Deriv para usuário:', userId);
 
     const result = await query(`
-      SELECT deriv_connected, deriv_account_id, deriv_access_token 
+      SELECT deriv_connected, deriv_account_id, deriv_access_token, 
+             deriv_email, deriv_currency, deriv_is_virtual, deriv_fullname
       FROM users 
       WHERE id = $1
     `, [userId]);
@@ -392,7 +747,11 @@ router.get('/deriv/status', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       connected: connected,
-      account_id: user.deriv_account_id
+      account_id: user.deriv_account_id,
+      deriv_email: user.deriv_email,
+      deriv_currency: user.deriv_currency,
+      is_virtual: user.deriv_is_virtual,
+      fullname: user.deriv_fullname
     });
 
   } catch (error) {

@@ -222,56 +222,74 @@ const OperationsPage: React.FC = () => {
           data: event.data
         });
         
-        if (event.origin !== window.location.origin) {
-          console.log('❌ Origem rejeitada:', event.origin, '!==', window.location.origin);
+        // Aceitar mensagens do próprio site (callback page)
+        const siteUrl = new URL(window.location.origin);
+        const eventUrl = new URL(event.origin);
+        if (eventUrl.hostname !== siteUrl.hostname) {
+          console.log('❌ Origem rejeitada:', event.origin, 'não pertence a', siteUrl.hostname);
           return;
         }
         
-        if (event.data.type === 'deriv-oauth-callback') {
-          console.log('✅ Callback OAuth recebido, processando...');
+        // Handle OAuth success
+        if (event.data.type === 'deriv_oauth_success') {
+          console.log('✅ Callback OAuth recebido com sucesso, processando...');
           popup.close();
           
           try {
-            console.log('🔄 Enviando dados OAuth para o backend...');
-            // Enviar dados OAuth para o backend
-            const callbackResponse = await axios.post('/api/auth/deriv/callback', {
-              accounts: event.data.accounts,
-              token1: event.data.token1
+            const { token, accountId, loginid, is_demo, currency, email, validated } = event.data.data;
+            console.log('📋 Dados OAuth validados recebidos:', { 
+              accountId: loginid, 
+              is_demo, 
+              currency, 
+              email, 
+              validated 
             });
             
-            console.log('✅ Callback OAuth processado com sucesso:', callbackResponse.data);
-            toast.success('Conta Deriv conectada com sucesso!');
-            
-            // Atualizar estado imediatamente e depois revalidar
-            setDerivConnected(true);
-            
-            // Atualizar contexto de autenticação imediatamente
-            if (user && updateUser) {
-              updateUser({
-                ...user,
-                deriv_connected: true,
-                deriv_account_id: callbackResponse.data.account_info?.loginid
-              });
-              console.log('🔄 Contexto de autenticação atualizado com dados Deriv');
+            // Verificar se o token foi validado com sucesso
+            if (validated) {
+              toast.success(`Conta Deriv conectada: ${loginid} (${currency})`);
+              
+              // Atualizar estado imediatamente com dados validados
+              setDerivConnected(true);
+              
+              // Atualizar contexto de autenticação com dados completos
+              if (user && updateUser) {
+                updateUser({
+                  ...user,
+                  deriv_connected: true,
+                  deriv_account_id: loginid || accountId,
+                  deriv_email: email,
+                  deriv_currency: currency,
+                  deriv_is_virtual: is_demo
+                });
+                console.log('🔄 Contexto atualizado com dados validados da Deriv');
+              }
+              
+              // Verificar conexão para sincronizar com backend
+              setTimeout(async () => {
+                console.log('🔄 Sincronizando estado com backend...');
+                const isConnected = await checkDerivConnection(true); // silent check
+                if (isConnected) {
+                  console.log('🎉 Estado sincronizado com backend!');
+                }
+              }, 500);
+            } else {
+              toast.error('Token não foi validado pela Deriv API');
+              console.error('❌ Token validation flag is false');
             }
             
-            // Verificar conexão novamente com delay para confirmar no backend
-            setTimeout(async () => {
-              console.log('🔄 Revalidating Deriv connection after OAuth...');
-              const isConnected = await checkDerivConnection(false);
-              if (isConnected) {
-                console.log('🎉 Deriv connection confirmed after OAuth!');
-              } else {
-                console.warn('⚠️ Connection check failed after successful OAuth - but proceeding as OAuth was successful');
-                // Manter como conectado se OAuth foi bem-sucedido
-                setDerivConnected(true);
-              }
-            }, 1500);
           } catch (error: any) {
-            console.error('❌ Erro no callback OAuth:', error.response?.data || error.message);
-            const message = error.response?.data?.error || 'Erro ao conectar com a Deriv';
-            toast.error(message);
+            console.error('❌ Erro ao processar dados OAuth:', error);
+            toast.error('Erro ao processar dados OAuth');
           }
+        }
+        
+        // Handle OAuth error
+        if (event.data.type === 'deriv_oauth_error') {
+          console.error('❌ Erro OAuth recebido:', event.data.error);
+          popup.close();
+          toast.error(event.data.error || 'Erro ao conectar com a Deriv');
+        }
           
           window.removeEventListener('message', handleMessage);
         }
