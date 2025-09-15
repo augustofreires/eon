@@ -9,43 +9,45 @@ const WebSocket = require('ws');
 
 const router = express.Router();
 
-// Função para validar token com Deriv WebSocket API
-const validateTokenWithDerivAPI = (token) => {
+// Função para validar token e buscar múltiplas contas via Deriv WebSocket API
+const validateTokenAndGetAccounts = (token) => {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=82349');
-    
+
     const timeout = setTimeout(() => {
       ws.close();
       reject(new Error('Timeout: WebSocket connection took too long'));
-    }, 10000); // 10 seconds timeout
-    
+    }, 15000); // 15 seconds timeout for multiple requests
+
+    let accountData = {};
+    let accountsList = [];
+
     ws.onopen = () => {
-      console.log('🔗 Connected to Deriv WebSocket for token validation');
-      
+      console.log('🔗 Connected to Deriv WebSocket for token validation and account fetching');
+
       // Send authorize request
       const authorizeRequest = {
         authorize: token,
-        req_id: Date.now()
+        req_id: 1
       };
-      
+
       ws.send(JSON.stringify(authorizeRequest));
     };
-    
+
     ws.onmessage = (event) => {
       try {
         const response = JSON.parse(event.data);
-        console.log('📨 Deriv WebSocket response:', response);
-        
-        clearTimeout(timeout);
-        
+        console.log('📨 Deriv WebSocket response:', { req_id: response.req_id, msg_type: response.msg_type });
+
         if (response.error) {
           console.error('❌ Deriv API error:', response.error);
+          clearTimeout(timeout);
           ws.close();
           reject(new Error(`Deriv API error: ${response.error.message}`));
           return;
         }
-        
-        if (response.authorize) {
+
+        if (response.req_id === 1 && response.authorize) {
           console.log('✅ Token validation successful:', {
             loginid: response.authorize.loginid,
             email: response.authorize.email,
@@ -53,9 +55,8 @@ const validateTokenWithDerivAPI = (token) => {
             currency: response.authorize.currency,
             is_virtual: response.authorize.is_virtual
           });
-          
-          ws.close();
-          resolve({
+
+          accountData = {
             loginid: response.authorize.loginid,
             email: response.authorize.email,
             currency: response.authorize.currency,
@@ -63,6 +64,46 @@ const validateTokenWithDerivAPI = (token) => {
             is_virtual: response.authorize.is_virtual,
             fullname: response.authorize.fullname,
             token: token
+          };
+
+          // EXTRAIR MÚLTIPLAS CONTAS DA RESPOSTA DO AUTHORIZE
+          let availableAccounts = [];
+
+          if (response.authorize.account_list && Array.isArray(response.authorize.account_list)) {
+            console.log('📋 Lista de contas encontrada no authorize:', response.authorize.account_list.length);
+
+            availableAccounts = response.authorize.account_list.map(account => ({
+              // IMPORTANTE: Cada conta na lista não tem token individual
+              // O OAuth da Deriv fornece apenas o token da conta principal
+              token: token, // Todas usam o mesmo token inicialmente
+              loginid: account.loginid,
+              currency: account.currency,
+              is_virtual: account.is_virtual === 1 || account.is_virtual === true,
+              account_type: account.account_type,
+              landing_company_name: account.landing_company_name
+            }));
+
+            console.log('📊 Contas processadas:');
+            availableAccounts.forEach((acc, idx) => {
+              console.log(`  ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency} - ${acc.account_type}`);
+            });
+          } else {
+            console.log('ℹ️ account_list não encontrada, usando conta principal apenas');
+            availableAccounts = [{
+              token: token,
+              loginid: accountData.loginid,
+              currency: accountData.currency,
+              is_virtual: accountData.is_virtual
+            }];
+          }
+
+          clearTimeout(timeout);
+          ws.close();
+
+          // Retornar dados completos incluindo múltiplas contas
+          resolve({
+            ...accountData,
+            available_accounts: availableAccounts
           });
         }
       } catch (error) {
@@ -72,16 +113,32 @@ const validateTokenWithDerivAPI = (token) => {
         reject(error);
       }
     };
-    
+
     ws.onerror = (error) => {
       clearTimeout(timeout);
       console.error('❌ WebSocket error:', error);
       reject(new Error('WebSocket connection error'));
     };
-    
+
     ws.onclose = (code, reason) => {
       clearTimeout(timeout);
       console.log('🔌 WebSocket closed:', code, reason);
+    };
+  });
+};
+
+// Função legada para compatibilidade (usar validateTokenAndGetAccounts preferencialmente)
+const validateTokenWithDerivAPI = (token) => {
+  return validateTokenAndGetAccounts(token).then(result => {
+    // Return only main account data for compatibility
+    return {
+      loginid: result.loginid,
+      email: result.email,
+      currency: result.currency,
+      country: result.country,
+      is_virtual: result.is_virtual,
+      fullname: result.fullname,
+      token: result.token
     };
   });
 };
@@ -345,7 +402,7 @@ router.get('/deriv/authorize', authenticateToken, async (req, res) => {
     }
 
     const derivAppId = process.env.DERIV_APP_ID;
-    const redirectUri = process.env.DERIV_OAUTH_REDIRECT_URL || `${process.env.CORS_ORIGIN || 'https://iaeon.site'}/operations/auth/deriv/callback`;
+    const redirectUri = process.env.DERIV_OAUTH_REDIRECT_URL || `${process.env.CORS_ORIGIN || 'https://iaeon.site'}/operations`;
     
     // Gerar um token JWT temporário com userId para identificar no callback
     const jwt = require('jsonwebtoken');
@@ -391,35 +448,11 @@ router.get('/deriv/authorize', authenticateToken, async (req, res) => {
 // Callback OAuth da Deriv (GET sem autenticação)
 router.get('/deriv/callback', async (req, res) => {
   try {
-    // Rate limiting desabilitado temporariamente
-    // if (!checkRateLimit(req.ip, 10)) {
-    //   const rateLimitHtml = `
-    //     <!DOCTYPE html>
-    //     <html>
-    //     <head><title>Rate Limit</title><meta charset="utf-8"></head>
-    //     <body>
-    //       <div style="text-align: center; font-family: Arial, sans-serif; margin-top: 100px;">
-    //         <h2>⏱️ Muitas Tentativas</h2>
-    //         <p>Aguarde 1 minuto antes de tentar novamente.</p>
-    //       </div>
-    //       <script>
-    //         if (window.opener) {
-    //           window.opener.postMessage({
-    //             type: 'deriv_oauth_error',
-    //             error: 'Rate limit excedido'
-    //           }, '*');
-    //         }
-    //         setTimeout(() => window.close(), 3000);
-    //       </script>
-    //     </body>
-    //     </html>
-    //   `;
-    //   return res.status(429).send(rateLimitHtml);
-    // }
-    console.log('🔄 Processando callback OAuth da Deriv...', {
-      query: Object.keys(req.query),
-      timestamp: new Date().toISOString()
-    });
+    // DEBUGGING COMPLETO: Log de todos os parâmetros recebidos
+    console.log('🔄 Processando callback OAuth da Deriv...');
+    console.log('📋 TODOS os parâmetros recebidos:', JSON.stringify(req.query, null, 2));
+    console.log('🔍 Chaves dos parâmetros:', Object.keys(req.query));
+    console.log('⏰ Timestamp:', new Date().toISOString());
 
     // Função auxiliar para retornar HTML de erro
     const sendErrorResponse = (errorMessage, details = null) => {
@@ -442,18 +475,23 @@ router.get('/deriv/callback', async (req, res) => {
             <p><small>Esta janela será fechada automaticamente...</small></p>
           </div>
           <script>
+            console.log('❌ Callback de erro carregado:', '${errorMessage}');
             try {
               if (window.opener) {
+                console.log('✅ Window.opener encontrado, enviando erro...');
                 window.opener.postMessage({
                   type: 'deriv_oauth_error',
                   error: '${errorMessage}',
                   details: ${details ? JSON.stringify(details) : 'null'}
                 }, '*');
+                console.log('📤 Erro enviado via postMessage');
+              } else {
+                console.error('❌ Window.opener não encontrado para envio de erro!');
               }
             } catch (e) {
-              console.error('Erro ao enviar postMessage:', e);
+              console.error('❌ Erro ao enviar postMessage:', e);
             }
-            setTimeout(() => window.close(), 3000);
+            setTimeout(() => window.close(), 5000);
           </script>
         </body>
         </html>
@@ -472,19 +510,81 @@ router.get('/deriv/callback', async (req, res) => {
     let userId = null;
     let isDemo = false;
 
-    // Handle different OAuth response formats from URL params (with sanitization)
-    if (req.query.token1) {
-      // Format: ?token1=abc123&acct1=CR123
-      token = sanitizeInput(req.query.token1);
-      accountId = sanitizeInput(req.query.acct1);
-    } else if (req.query.access_token) {
-      // Format: ?access_token=abc123&account_id=CR123
-      token = sanitizeInput(req.query.access_token);
-      accountId = sanitizeInput(req.query.account_id);
-    } else if (req.query.code) {
-      // Format: ?code=abc123 (OAuth2 authorization code)
-      console.log('📝 Recebido authorization code');
-      token = sanitizeInput(req.query.code); // For now, treat code as token
+    // Extract multiple accounts from OAuth response (Deriv returns multiple accounts)
+    const accounts = [];
+    let primaryToken = null;
+    let primaryAccountId = null;
+
+    // Parse all accounts from OAuth response (CORRIGIDO)
+    console.log('🔍 Iniciando busca por múltiplas contas...');
+
+    for (let i = 1; i <= 10; i++) { // Check up to 10 accounts
+      const tokenKey = `token${i}`;
+      const acctKey = `acct${i}`;
+      const curKey = `cur${i}`;      // Deriv pode usar 'cur'
+      const currKey = `curr${i}`;    // Ou 'curr' (com duplo r)
+
+      console.log(`🔎 Verificando conta ${i}:`, {
+        tokenKey,
+        acctKey,
+        curKey,
+        currKey,
+        hasToken: !!req.query[tokenKey],
+        hasAcct: !!req.query[acctKey],
+        hasCur: !!req.query[curKey],
+        hasCurr: !!req.query[currKey]
+      });
+
+      if (req.query[tokenKey] && req.query[acctKey]) {
+        // Determinar currency (pode ser cur1 ou curr1)
+        const currency = req.query[currKey] || req.query[curKey] || 'USD';
+
+        const accountData = {
+          token: sanitizeInput(req.query[tokenKey]),
+          loginid: sanitizeInput(req.query[acctKey]),
+          currency: sanitizeInput(currency.toUpperCase()),
+          is_virtual: req.query[acctKey].toLowerCase().startsWith('vr') ||
+                     req.query[acctKey].toLowerCase().startsWith('vrtc')
+        };
+
+        accounts.push(accountData);
+        console.log(`✅ Conta ${i} encontrada e adicionada:`, {
+          loginid: accountData.loginid,
+          is_virtual: accountData.is_virtual,
+          currency: accountData.currency,
+          token_length: accountData.token.length
+        });
+
+        // Use first account as primary
+        if (!primaryToken) {
+          primaryToken = accountData.token;
+          primaryAccountId = accountData.loginid;
+        }
+      } else {
+        console.log(`❌ Conta ${i} não encontrada (faltam token ou acct)`);
+      }
+    }
+
+    console.log(`📊 RESUMO: ${accounts.length} contas encontradas no total`);
+    accounts.forEach((acc, idx) => {
+      console.log(`  ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency}`);
+    });
+
+    // Fallback to single token format
+    if (accounts.length === 0) {
+      if (req.query.token1) {
+        token = sanitizeInput(req.query.token1);
+        accountId = sanitizeInput(req.query.acct1);
+      } else if (req.query.access_token) {
+        token = sanitizeInput(req.query.access_token);
+        accountId = sanitizeInput(req.query.account_id);
+      } else if (req.query.code) {
+        console.log('📝 Recebido authorization code');
+        token = sanitizeInput(req.query.code);
+      }
+    } else {
+      token = primaryToken;
+      accountId = primaryAccountId;
     }
 
     // Check for error in OAuth response
@@ -533,13 +633,14 @@ router.get('/deriv/callback', async (req, res) => {
       isDemo: isDemo
     });
 
-    // Validar token com Deriv WebSocket API
+    // Validar token e buscar múltiplas contas com Deriv WebSocket API
     try {
-      console.log('🔄 Validating token with Deriv WebSocket API...');
-      
-      const accountData = await validateTokenWithDerivAPI(token);
-      
-      console.log('✅ Token validation successful, saving to database...');
+      console.log('🔄 Validating token and fetching accounts with Deriv WebSocket API...');
+
+      // Usar nova função que busca múltiplas contas
+      const accountData = await validateTokenAndGetAccounts(token);
+
+      console.log('✅ Token validation and account fetching successful, saving to database...');
       
       // Usar dados validados da API
       const validatedAccountId = accountData.loginid;
@@ -548,42 +649,81 @@ router.get('/deriv/callback', async (req, res) => {
       // First, let's add the new columns if they don't exist
       try {
         await query(`
-          ALTER TABLE users 
+          ALTER TABLE users
           ADD COLUMN IF NOT EXISTS deriv_access_token VARCHAR(500),
           ADD COLUMN IF NOT EXISTS deriv_connected BOOLEAN DEFAULT false,
           ADD COLUMN IF NOT EXISTS deriv_email VARCHAR(255),
           ADD COLUMN IF NOT EXISTS deriv_currency VARCHAR(10),
           ADD COLUMN IF NOT EXISTS deriv_country VARCHAR(10),
           ADD COLUMN IF NOT EXISTS deriv_is_virtual BOOLEAN DEFAULT false,
-          ADD COLUMN IF NOT EXISTS deriv_fullname VARCHAR(255)
+          ADD COLUMN IF NOT EXISTS deriv_fullname VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS deriv_accounts_tokens TEXT
         `);
         console.log('✅ Database columns ensured');
       } catch (columnError) {
         console.log('ℹ️ Database columns might already exist:', columnError.message);
       }
 
+      // Save all accounts as JSON for switching
+      // Combinar contas do OAuth callback + conta validada pela API
+      let allAccounts = [...accounts]; // Contas encontradas no callback OAuth
+
+      // Adicionar conta principal validada se não estiver na lista
+      const mainAccount = {
+        token: token,
+        loginid: validatedAccountId,
+        currency: accountData.currency,
+        is_virtual: validatedIsDemo
+      };
+
+      const accountExists = allAccounts.some(acc => acc.loginid === validatedAccountId);
+      if (!accountExists) {
+        allAccounts.push(mainAccount);
+        console.log('➕ Conta principal adicionada à lista:', mainAccount.loginid);
+      }
+
+      // Adicionar contas adicionais da API se disponíveis
+      if (accountData.available_accounts && accountData.available_accounts.length > 0) {
+        accountData.available_accounts.forEach(apiAccount => {
+          const exists = allAccounts.some(acc => acc.loginid === apiAccount.loginid);
+          if (!exists) {
+            allAccounts.push(apiAccount);
+            console.log('➕ Conta adicional da API adicionada:', apiAccount.loginid);
+          }
+        });
+      }
+
+      console.log(`📊 TOTAL DE CONTAS SALVAS: ${allAccounts.length}`);
+      allAccounts.forEach((acc, idx) => {
+        console.log(`  ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency}`);
+      });
+
+      const accountsTokensJson = JSON.stringify(allAccounts);
+
       const updateResult = await query(`
-        UPDATE users 
-        SET deriv_access_token = $1, 
-            deriv_account_id = $2, 
+        UPDATE users
+        SET deriv_access_token = $1,
+            deriv_account_id = $2,
             deriv_connected = $3,
             deriv_email = $4,
             deriv_currency = $5,
             deriv_country = $6,
             deriv_is_virtual = $7,
             deriv_fullname = $8,
+            deriv_accounts_tokens = $9,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $9
+        WHERE id = $10
         RETURNING id, email
       `, [
-        token, 
-        validatedAccountId, 
+        token,
+        validatedAccountId,
         true,
         accountData.email,
         accountData.currency,
         accountData.country,
         validatedIsDemo,
         accountData.fullname,
+        accountsTokensJson,
         userId
       ]);
 
@@ -623,9 +763,11 @@ router.get('/deriv/callback', async (req, res) => {
             <p><small>Esta janela será fechada automaticamente...</small></p>
           </div>
           <script>
+            console.log('🎉 Callback HTML carregado, preparando postMessage...');
             try {
               if (window.opener) {
-                window.opener.postMessage({
+                console.log('✅ Window.opener encontrado, enviando postMessage...');
+                const messageData = {
                   type: 'deriv_oauth_success',
                   data: {
                     token: '${token.substring(0, 10)}...',
@@ -637,12 +779,21 @@ router.get('/deriv/callback', async (req, res) => {
                     email: '${accountData.email}',
                     validated: true
                   }
-                }, '*');
+                };
+                console.log('📤 Enviando postMessage:', messageData);
+                window.opener.postMessage(messageData, '*');
+                console.log('✅ PostMessage enviado com sucesso');
+              } else {
+                console.error('❌ Window.opener não encontrado!');
               }
             } catch (e) {
-              console.error('Erro ao enviar postMessage:', e);
+              console.error('❌ Erro ao enviar postMessage:', e);
             }
-            setTimeout(() => window.close(), 3000);
+            console.log('⏰ Fechando janela em 5 segundos...');
+            setTimeout(() => {
+              console.log('🔒 Fechando janela agora...');
+              window.close();
+            }, 5000);
           </script>
         </body>
         </html>
@@ -690,6 +841,149 @@ router.get('/deriv/callback', async (req, res) => {
   }
 });
 
+// Processar callback OAuth da Deriv (via POST do frontend)
+router.post('/deriv/process-callback', authenticateToken, async (req, res) => {
+  try {
+    console.log('🔄 Processando callback OAuth via POST...', {
+      body: Object.keys(req.body),
+      timestamp: new Date().toISOString()
+    });
+
+    const { token1, acct1, state } = req.body;
+    const userId = req.user.id;
+
+    if (!token1) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Token de acesso não encontrado' 
+      });
+    }
+
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Identificação do usuário não encontrada' 
+      });
+    }
+
+    // Determinar se é conta demo
+    const isDemo = acct1 ? (acct1.startsWith('VR') || acct1.startsWith('VRTC')) : false;
+
+    console.log('✅ Dados OAuth extraídos:', {
+      accountId: acct1 || 'N/A',
+      tokenLength: token1?.length || 0,
+      userId: userId,
+      isDemo: isDemo
+    });
+
+    // Validar token com Deriv WebSocket API
+    try {
+      console.log('🔄 Validando token via WebSocket API...');
+      
+      const accountData = await validateTokenWithDerivAPI(token1);
+      
+      console.log('✅ Token validado, salvando no banco...');
+      
+      // Usar dados validados da API
+      const validatedAccountId = accountData.loginid;
+      const validatedIsDemo = accountData.is_virtual;
+      
+      // Adicionar colunas se não existirem
+      try {
+        await query(`
+          ALTER TABLE users
+          ADD COLUMN IF NOT EXISTS deriv_access_token VARCHAR(500),
+          ADD COLUMN IF NOT EXISTS deriv_connected BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS deriv_email VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS deriv_currency VARCHAR(10),
+          ADD COLUMN IF NOT EXISTS deriv_country VARCHAR(10),
+          ADD COLUMN IF NOT EXISTS deriv_is_virtual BOOLEAN DEFAULT false,
+          ADD COLUMN IF NOT EXISTS deriv_fullname VARCHAR(255),
+          ADD COLUMN IF NOT EXISTS deriv_accounts_tokens TEXT
+        `);
+        console.log('✅ Colunas do banco verificadas');
+      } catch (columnError) {
+        console.log('ℹ️ Colunas já existem:', columnError.message);
+      }
+
+      // For process-callback, we only have one token, so store it as single account
+      const accountsTokensJson = JSON.stringify([{
+        token: token1,
+        loginid: validatedAccountId,
+        currency: accountData.currency,
+        is_virtual: validatedIsDemo
+      }]);
+
+      const updateResult = await query(`
+        UPDATE users
+        SET deriv_access_token = $1,
+            deriv_account_id = $2,
+            deriv_connected = $3,
+            deriv_email = $4,
+            deriv_currency = $5,
+            deriv_country = $6,
+            deriv_is_virtual = $7,
+            deriv_fullname = $8,
+            deriv_accounts_tokens = $9,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $10
+        RETURNING id, email
+      `, [
+        token1,
+        validatedAccountId,
+        true,
+        accountData.email,
+        accountData.currency,
+        accountData.country,
+        validatedIsDemo,
+        accountData.fullname,
+        accountsTokensJson,
+        userId
+      ]);
+
+      if (updateResult.rows.length === 0) {
+        return res.status(404).json({ 
+          success: false,
+          error: 'Usuário não encontrado' 
+        });
+      }
+
+      console.log('✅ Usuário atualizado com sucesso:', {
+        email: updateResult.rows[0].email,
+        deriv_account: validatedAccountId,
+        is_virtual: validatedIsDemo
+      });
+
+      res.json({
+        success: true,
+        message: 'Conta Deriv conectada com sucesso',
+        account_id: validatedAccountId,
+        deriv_email: accountData.email,
+        deriv_currency: accountData.currency,
+        deriv_country: accountData.country,
+        is_virtual: validatedIsDemo,
+        deriv_fullname: accountData.fullname
+      });
+
+    } catch (validationError) {
+      console.error('❌ Validação do token falhou:', validationError);
+      res.status(400).json({
+        success: false,
+        error: 'Token inválido ou expirado. Tente conectar novamente.',
+        details: validationError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Erro geral no processamento OAuth:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Erro interno do servidor',
+      details: error.message
+    });
+  }
+});
+
 // Desconectar conta Deriv
 router.post('/deriv/disconnect', authenticateToken, async (req, res) => {
   try {
@@ -723,9 +1017,10 @@ router.get('/deriv/status', authenticateToken, async (req, res) => {
     console.log('🔍 Verificando status Deriv para usuário:', userId);
 
     const result = await query(`
-      SELECT deriv_connected, deriv_account_id, deriv_access_token, 
-             deriv_email, deriv_currency, deriv_is_virtual, deriv_fullname
-      FROM users 
+      SELECT deriv_connected, deriv_account_id, deriv_access_token,
+             deriv_email, deriv_currency, deriv_is_virtual, deriv_fullname,
+             deriv_accounts_tokens
+      FROM users
       WHERE id = $1
     `, [userId]);
 
@@ -744,6 +1039,14 @@ router.get('/deriv/status', authenticateToken, async (req, res) => {
       account_id: user.deriv_account_id
     });
 
+    // Parse available accounts
+    let availableAccounts = [];
+    try {
+      availableAccounts = JSON.parse(user.deriv_accounts_tokens || '[]');
+    } catch (parseError) {
+      console.log('ℹ️ Erro ao fazer parse dos tokens das contas:', parseError);
+    }
+
     res.json({
       success: true,
       connected: connected,
@@ -751,11 +1054,192 @@ router.get('/deriv/status', authenticateToken, async (req, res) => {
       deriv_email: user.deriv_email,
       deriv_currency: user.deriv_currency,
       is_virtual: user.deriv_is_virtual,
-      fullname: user.deriv_fullname
+      fullname: user.deriv_fullname,
+      available_accounts: availableAccounts.map(acc => ({
+        loginid: acc.loginid,
+        currency: acc.currency,
+        is_virtual: acc.is_virtual
+      }))
     });
 
   } catch (error) {
     console.error('❌ Erro ao verificar status Deriv:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Obter informações da conta e saldo Deriv
+router.get('/deriv/account-info', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log('💰 Obtendo informações da conta Deriv para usuário:', userId);
+
+    const result = await query(`
+      SELECT deriv_connected, deriv_account_id, deriv_access_token,
+             deriv_email, deriv_currency, deriv_is_virtual, deriv_fullname,
+             deriv_accounts_tokens
+      FROM users
+      WHERE id = $1
+    `, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = result.rows[0];
+    const connected = !!(user.deriv_connected && (user.deriv_connected === true || user.deriv_connected === 1));
+    
+    if (!connected || !user.deriv_access_token) {
+      return res.status(400).json({ error: 'Conta Deriv não conectada' });
+    }
+
+    try {
+      // Usar WebSocket para conectar com a API Deriv
+      const WebSocket = require('ws');
+      
+      const wsPromise = new Promise((resolve, reject) => {
+        const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=' + (process.env.DERIV_APP_ID || 82349));
+        let responseCount = 0;
+        let accountData = {};
+        
+        ws.on('open', () => {
+          console.log('🔌 Conectado ao WebSocket Deriv');
+          
+          // Autorizar com token
+          ws.send(JSON.stringify({
+            authorize: user.deriv_access_token,
+            req_id: 1
+          }));
+        });
+        
+        ws.on('message', (data) => {
+          try {
+            const response = JSON.parse(data);
+            console.log('📨 Resposta Deriv:', { req_id: response.req_id, msg_type: response.msg_type });
+            
+            if (response.req_id === 1 && response.authorize) {
+              // Autorização bem-sucedida, buscar saldo
+              accountData.account_info = response.authorize;
+              ws.send(JSON.stringify({
+                balance: 1,
+                account: user.deriv_account_id,
+                req_id: 2
+              }));
+              
+            } else if (response.req_id === 2 && response.balance) {
+              // Saldo recebido
+              accountData.balance_info = response.balance;
+              responseCount++;
+              
+              if (responseCount >= 1) {
+                ws.close();
+                resolve(accountData);
+              }
+            } else if (response.error) {
+              console.error('❌ Erro na API Deriv:', response.error);
+              ws.close();
+              reject(new Error(response.error.message));
+            }
+          } catch (parseError) {
+            console.error('❌ Erro ao fazer parse da resposta:', parseError);
+          }
+        });
+        
+        ws.on('error', (error) => {
+          console.error('❌ Erro no WebSocket:', error);
+          reject(error);
+        });
+        
+        // Timeout após 10 segundos
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.close();
+            reject(new Error('Timeout na conexão Deriv'));
+          }
+        }, 10000);
+      });
+
+      const derivData = await wsPromise;
+      
+      console.log('✅ Dados Deriv obtidos:', {
+        account_id: user.deriv_account_id,
+        balance: derivData.balance_info?.balance,
+        currency: derivData.balance_info?.currency,
+        is_virtual: derivData.account_info?.is_virtual
+      });
+
+      // Parse available accounts
+      let availableAccounts = [];
+      try {
+        if (user.deriv_accounts_tokens) {
+          availableAccounts = JSON.parse(user.deriv_accounts_tokens);
+        }
+      } catch (parseError) {
+        console.log('ℹ️ Não foi possível fazer parse das contas:', parseError);
+      }
+
+      res.json({
+        success: true,
+        account: {
+          id: user.deriv_account_id,
+          balance: derivData.balance_info?.balance || 0,
+          currency: derivData.balance_info?.currency || user.deriv_currency || 'USD',
+          is_virtual: derivData.account_info?.is_virtual || user.deriv_is_virtual,
+          fullname: derivData.account_info?.fullname || user.deriv_fullname,
+          email: derivData.account_info?.email || user.deriv_email,
+          country: derivData.account_info?.country,
+          landing_company_name: derivData.account_info?.landing_company_name
+        },
+        available_accounts: availableAccounts.map(acc => ({
+          loginid: acc.loginid,
+          currency: acc.currency,
+          is_virtual: acc.is_virtual
+        })),
+        transactions: [],
+        profit_loss: {
+          today: 0,
+          total: 0
+        }
+      });
+      
+    } catch (apiError) {
+      console.error('❌ Erro ao conectar com API Deriv:', apiError);
+      
+      // Parse available accounts for fallback
+      let availableAccounts = [];
+      try {
+        if (user.deriv_accounts_tokens) {
+          availableAccounts = JSON.parse(user.deriv_accounts_tokens);
+        }
+      } catch (parseError) {
+        console.log('ℹ️ Não foi possível fazer parse das contas:', parseError);
+      }
+
+      // Retornar informações básicas se a API falhar
+      res.json({
+        success: true,
+        account: {
+          id: user.deriv_account_id,
+          balance: 0.02, // Mock do saldo para teste
+          currency: user.deriv_currency || 'USD',
+          is_virtual: user.deriv_is_virtual,
+          fullname: user.deriv_fullname,
+          email: user.deriv_email
+        },
+        available_accounts: availableAccounts.map(acc => ({
+          loginid: acc.loginid,
+          currency: acc.currency,
+          is_virtual: acc.is_virtual
+        })),
+        transactions: [],
+        profit_loss: { today: 0, total: 0 },
+        warning: 'Não foi possível obter saldo em tempo real. Exibindo valor simulado.'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao obter informações da conta Deriv:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -911,6 +1395,209 @@ router.get('/deriv-affiliate-link', async (req, res) => {
   } catch (error) {
     console.error('Erro ao buscar link de afiliado:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar todas as contas disponíveis via API Deriv (para usar após OAuth)
+router.post('/deriv/fetch-all-accounts', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log('🔍 Buscando todas as contas disponíveis para usuário:', userId);
+
+    // Buscar token atual do usuário
+    const userResult = await query(`
+      SELECT deriv_connected, deriv_access_token, deriv_account_id
+      FROM users
+      WHERE id = $1
+    `, [userId]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    if (!user.deriv_connected || !user.deriv_access_token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Conta Deriv não conectada'
+      });
+    }
+
+    try {
+      // Usar nova função para buscar múltiplas contas
+      const accountData = await validateTokenAndGetAccounts(user.deriv_access_token);
+
+      console.log('📋 Contas encontradas via API:', accountData.available_accounts);
+
+      // Atualizar banco com todas as contas encontradas
+      const accountsTokensJson = JSON.stringify(accountData.available_accounts || []);
+
+      await query(`
+        UPDATE users
+        SET deriv_accounts_tokens = $1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+      `, [accountsTokensJson, userId]);
+
+      res.json({
+        success: true,
+        message: 'Contas atualizadas com sucesso',
+        accounts_found: accountData.available_accounts?.length || 0,
+        available_accounts: (accountData.available_accounts || []).map(acc => ({
+          loginid: acc.loginid,
+          currency: acc.currency,
+          is_virtual: acc.is_virtual
+        }))
+      });
+
+    } catch (apiError) {
+      console.error('❌ Erro ao buscar contas via API:', apiError);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao buscar contas: ' + apiError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Erro geral ao buscar contas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Trocar entre conta Virtual e Real (MÉTODO CORRETO)
+router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { is_virtual } = req.body;
+
+    console.log('🔄 Solicitação de troca de conta:', { userId, is_virtual });
+
+    // Buscar informações atuais do usuário incluindo tokens de todas as contas
+    const userResult = await query(`
+      SELECT deriv_connected, deriv_access_token, deriv_account_id, deriv_accounts_tokens
+      FROM users
+      WHERE id = $1
+    `, [userId]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    if (!user.deriv_connected || !user.deriv_access_token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Conta Deriv não conectada'
+      });
+    }
+
+    // Parse stored accounts tokens
+    let storedAccounts = [];
+    try {
+      storedAccounts = JSON.parse(user.deriv_accounts_tokens || '[]');
+    } catch (parseError) {
+      console.error('❌ Erro ao fazer parse dos tokens das contas:', parseError);
+      return res.status(400).json({
+        success: false,
+        error: 'Dados de contas corrompidos. Reconecte sua conta Deriv.'
+      });
+    }
+
+    // Encontrar a conta do tipo desejado
+    const targetAccount = storedAccounts.find(account => account.is_virtual === is_virtual);
+
+    if (!targetAccount) {
+      return res.status(400).json({
+        success: false,
+        error: `Conta ${is_virtual ? 'Virtual' : 'Real'} não encontrada. Você pode não ter este tipo de conta.`
+      });
+    }
+
+    console.log('🎯 Conta encontrada para switch:', {
+      from: user.deriv_account_id,
+      to: targetAccount.loginid,
+      type: is_virtual ? 'Virtual' : 'Real'
+    });
+
+    try {
+      // MÉTODO CORRETO: Validar e autorizar com o token específico da conta desejada
+      console.log('🔄 Validando token da conta alvo:', targetAccount.loginid);
+
+      // Usar a função de validação completa para a conta alvo
+      const switchResult = await validateTokenAndGetAccounts(targetAccount.token);
+
+      // Atualizar banco de dados com nova conta ativa
+      await query(`
+        UPDATE users
+        SET deriv_access_token = $1,
+            deriv_account_id = $2,
+            deriv_is_virtual = $3,
+            deriv_currency = $4,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5
+      `, [
+        targetAccount.token,
+        targetAccount.loginid,
+        is_virtual,
+        targetAccount.currency,
+        userId
+      ]);
+
+      console.log('✅ Conta trocada com sucesso via re-autorização:', {
+        from: user.deriv_account_id,
+        to: targetAccount.loginid,
+        type: is_virtual ? 'Virtual' : 'Real'
+      });
+
+      // Retornar informações da nova conta
+      res.json({
+        success: true,
+        message: `Conta alterada para ${is_virtual ? 'Virtual' : 'Real'} com sucesso`,
+        accountInfo: {
+          account: {
+            id: switchResult.loginid,
+            balance: 0, // Saldo será obtido via WebSocket em tempo real
+            currency: switchResult.currency,
+            is_virtual: switchResult.is_virtual,
+            fullname: switchResult.fullname,
+            email: switchResult.email
+          },
+          available_accounts: (switchResult.available_accounts || []).map(acc => ({
+            loginid: acc.loginid,
+            currency: acc.currency,
+            is_virtual: acc.is_virtual
+          })),
+          transactions: [],
+          profit_loss: { today: 0, total: 0 }
+        }
+      });
+
+    } catch (switchError) {
+      console.error('❌ Erro ao trocar conta:', switchError);
+      res.status(400).json({
+        success: false,
+        error: 'Erro ao trocar conta: ' + switchError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Erro geral ao trocar conta:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
   }
 });
 
