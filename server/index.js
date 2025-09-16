@@ -19,7 +19,7 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://ws.binaryws.com", "https://oauth.deriv.com"]
+      connectSrc: ["'self'", "https://ws.binaryws.com", "wss://ws.derivws.com", "https://oauth.deriv.com", "https://api.deriv.com"]
     }
   }
 }));

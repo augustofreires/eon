@@ -1,0 +1,62 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "# " {
+        # Check main server file
+        send "echo '=== CHECKING MAIN SERVER FILE ==='\r"
+        expect "# "
+        send "cat /root/eon/server/index.js\r"
+        expect "# "
+
+        # Check auth routes file
+        send "echo '\\n=== CHECKING AUTH ROUTES FILE ==='\r"
+        expect "# "
+        send "cat /root/eon/server/routes/auth.js\r"
+        expect "# "
+
+        # Check server directory structure
+        send "echo '\\n=== SERVER DIRECTORY STRUCTURE ==='\r"
+        expect "# "
+        send "find /root/eon/server -type f -name '*.js' | head -20\r"
+        expect "# "
+
+        # Check if there are any other auth-related files
+        send "echo '\\n=== SEARCHING FOR LOGIN-RELATED FILES ==='\r"
+        expect "# "
+        send "grep -r \"login\" /root/eon/server/ --include=\"*.js\" | head -10\r"
+        expect "# "
+
+        # Check for API routes
+        send "echo '\\n=== SEARCHING FOR API ROUTES ==='\r"
+        expect "# "
+        send "grep -r \"/api/auth\" /root/eon/server/ --include=\"*.js\" | head -10\r"
+        expect "# "
+
+        # Check current PM2 processes
+        send "echo '\\n=== CHECKING PM2 PROCESSES ==='\r"
+        expect "# "
+        send "pm2 list\r"
+        expect "# "
+
+        # Check server logs
+        send "echo '\\n=== CHECKING RECENT SERVER LOGS ==='\r"
+        expect "# "
+        send "pm2 logs server --lines 20\r"
+        expect "# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect eof

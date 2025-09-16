@@ -1,0 +1,214 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "# " {
+        # Go to project directory
+        send "cd /root/eon\r"
+        expect "# "
+
+        # Check what database is being used
+        send "echo '=== CHECKING DATABASE TYPE ==='\r"
+        expect "# "
+        send "ls -la server/database/\r"
+        expect "# "
+
+        # Check SQLite database file
+        send "echo '\\n=== CHECKING SQLITE DATABASE FILE ==='\r"
+        expect "# "
+        send "ls -la database.db\r"
+        expect "# "
+
+        # Check users table in SQLite
+        send "echo '\\n=== CHECKING USERS TABLE IN SQLITE ==='\r"
+        expect "# "
+        send "sqlite3 database.db \".schema users\"\r"
+        expect "# "
+
+        # Check user data in SQLite
+        send "echo '\\n=== CHECKING USER DATA IN SQLITE ==='\r"
+        expect "# "
+        send "sqlite3 database.db \"SELECT id, email, password_hash, role, status FROM users WHERE email = 'teste@iaeon.com';\"\r"
+        expect "# "
+
+        # Check all users in SQLite
+        send "echo '\\n=== ALL USERS IN SQLITE ==='\r"
+        expect "# "
+        send "sqlite3 database.db \"SELECT id, email, role, status FROM users;\"\r"
+        expect "# "
+
+        # Create bcrypt test for SQLite
+        send "echo '\\n=== CREATING SQLITE BCRYPT TEST ==='\r"
+        expect "# "
+        send "cat > /tmp/test_sqlite_bcrypt.js << 'EOF'
+const bcrypt = require('bcryptjs');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+async function testSQLiteLogin() {
+    const dbPath = path.join('/root/eon', 'database.db');
+    console.log('Testing SQLite database at:', dbPath);
+
+    const db = new sqlite3.Database(dbPath);
+
+    // Get user data
+    db.get(
+        \"SELECT id, email, password_hash, role, status FROM users WHERE email = ?\",
+        ['teste@iaeon.com'],
+        async (err, user) => {
+            if (err) {
+                console.error('❌ Database error:', err);
+                db.close();
+                return;
+            }
+
+            if (!user) {
+                console.log('❌ User not found: teste@iaeon.com');
+                db.close();
+                return;
+            }
+
+            console.log('✅ User found:');
+            console.log('- ID:', user.id);
+            console.log('- Email:', user.email);
+            console.log('- Role:', user.role);
+            console.log('- Status:', user.status);
+            console.log('- Password hash length:', user.password_hash ? user.password_hash.length : 0);
+            console.log('- Password hash preview:', user.password_hash ? user.password_hash.substring(0, 30) + '...' : 'null');
+
+            // Test password
+            const testPassword = '123456';
+            console.log('\\n=== TESTING PASSWORD ===');
+            console.log('Testing password:', testPassword);
+
+            try {
+                const isValidPassword = await bcrypt.compare(testPassword, user.password_hash);
+                console.log('Bcrypt result:', isValidPassword ? '✅ VALID PASSWORD' : '❌ INVALID PASSWORD');
+
+                if (!isValidPassword) {
+                    // Test with different hash formats
+                    console.log('\\n=== TESTING DIFFERENT HASH FORMATS ===');
+                    const newHash = await bcrypt.hash(testPassword, 12);
+                    console.log('Generated hash:', newHash);
+                    const testNew = await bcrypt.compare(testPassword, newHash);
+                    console.log('New hash test:', testNew ? '✅ VALID' : '❌ INVALID');
+                }
+            } catch (bcryptErr) {
+                console.error('❌ Bcrypt error:', bcryptErr);
+            }
+
+            db.close();
+        }
+    );
+}
+
+testSQLiteLogin();
+EOF\r"
+        expect "# "
+
+        # Run SQLite bcrypt test
+        send "echo '\\n=== RUNNING SQLITE BCRYPT TEST ==='\r"
+        expect "# "
+        send "node /tmp/test_sqlite_bcrypt.js\r"
+        expect "# "
+
+        # Wait for async operations
+        send "sleep 3\r"
+        expect "# "
+
+        # Test inserting a new user with correct hash
+        send "echo '\\n=== CREATING CORRECT HASH TEST ==='\r"
+        expect "# "
+        send "cat > /tmp/create_correct_user.js << 'EOF'
+const bcrypt = require('bcryptjs');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+async function createCorrectUser() {
+    const dbPath = path.join('/root/eon', 'database.db');
+    const db = new sqlite3.Database(dbPath);
+
+    const testPassword = '123456';
+    const email = 'teste@iaeon.com';
+
+    try {
+        // Generate correct hash
+        const correctHash = await bcrypt.hash(testPassword, 12);
+        console.log('Generated correct hash:', correctHash);
+
+        // Update user with correct hash
+        db.run(
+            \"UPDATE users SET password_hash = ? WHERE email = ?\",
+            [correctHash, email],
+            function(err) {
+                if (err) {
+                    console.error('❌ Update error:', err);
+                    db.close();
+                    return;
+                }
+
+                console.log('✅ User updated. Rows affected:', this.changes);
+
+                // Verify the update
+                db.get(
+                    \"SELECT email, password_hash FROM users WHERE email = ?\",
+                    [email],
+                    async (err, user) => {
+                        if (err) {
+                            console.error('❌ Select error:', err);
+                            db.close();
+                            return;
+                        }
+
+                        console.log('✅ Updated user hash length:', user.password_hash.length);
+
+                        // Test the new hash
+                        const testResult = await bcrypt.compare(testPassword, user.password_hash);
+                        console.log('✅ New hash test result:', testResult ? 'SUCCESS' : 'FAILED');
+
+                        db.close();
+                    }
+                );
+            }
+        );
+    } catch (error) {
+        console.error('❌ Error:', error);
+        db.close();
+    }
+}
+
+createCorrectUser();
+EOF\r"
+        expect "# "
+
+        # Run user creation test
+        send "echo '\\n=== UPDATING USER WITH CORRECT HASH ==='\r"
+        expect "# "
+        send "node /tmp/create_correct_user.js\r"
+        expect "# "
+
+        # Wait for async operations
+        send "sleep 3\r"
+        expect "# "
+
+        # Test login after hash update
+        send "echo '\\n=== TESTING LOGIN AFTER HASH UPDATE ==='\r"
+        expect "# "
+        send "curl -X POST http://localhost:5001/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"teste@iaeon.com\",\"password\":\"123456\"}' -s | jq .\r"
+        expect "# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect eof

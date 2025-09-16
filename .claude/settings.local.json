@@ -83,7 +83,10 @@
       "Bash(sudo chown:*)",
       "Bash(chmod:*)",
       "Bash(/Users/augustofreires/Desktop/deploy-vps.sh:*)",
-      "Bash(expect:*)"
+      "Bash(expect:*)",
+      "Bash(scp:*)",
+      "Bash(/Users/augustofreires/Desktop/create-component-vps.exp:*)",
+      "Bash(tar:*)"
     ],
     "deny": [],
     "ask": []

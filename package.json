@@ -11,10 +11,18 @@
     "install-all": "npm install && cd server && npm install && cd ../client && npm install",
     "setup-db": "cd server && npm run setup-db"
   },
-  "keywords": ["deriv", "bots", "trading", "platform"],
+  "keywords": [
+    "deriv",
+    "bots",
+    "trading",
+    "platform"
+  ],
   "author": "Augusto Freires",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
   }
-} 
+}

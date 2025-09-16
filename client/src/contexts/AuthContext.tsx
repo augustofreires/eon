@@ -30,7 +30,7 @@ interface AuthContextType {
   login: (email: string, password: string, isAdmin: boolean) => Promise<void>;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
-  fetchAccounts: () => Promise<void>;
+  fetchAccounts: (source?: string) => Promise<void>;
   switchAccount: (account: DerivAccount) => Promise<void>;
 }
 
@@ -53,6 +53,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [availableAccounts, setAvailableAccounts] = useState<DerivAccount[]>([]);
   const [currentAccount, setCurrentAccount] = useState<DerivAccount | null>(null);
+  const [fetchAccountsRunning, setFetchAccountsRunning] = useState(false); // CORREÇÃO: Estado para controle
 
   // Configurar axios
   axios.defaults.baseURL = 'https://iaeon.site';
@@ -162,56 +163,96 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(prev => prev ? { ...prev, ...userData } : null);
   };
 
-  const fetchAccounts = async () => {
-    try {
-      console.log('🔄 AuthContext: Buscando todas as contas da Deriv...');
+  // CORREÇÃO: Versão otimizada com controle de execuções múltiplas
+  const fetchAccounts = async (source = 'unknown') => {
+    // Prevenir múltiplas execuções simultâneas
+    if (fetchAccountsRunning) {
+      console.log('⏭️ AuthContext: fetchAccounts já está executando, pulando...');
+      return;
+    }
 
-      // Primeiro tentar buscar TODAS as contas via API
+    try {
+      setFetchAccountsRunning(true);
+      console.log(`🔄 AuthContext: Buscando contas (fonte: ${source})...`);
+
+      // ESTRATÉGIA 1: Verificar parâmetros OAuth na URL (prioridade máxima)
+      const urlParams = new URLSearchParams(window.location.search);
+      const oauthAccounts = [];
+
+      for (let i = 1; i <= 3; i++) {
+        const acct = urlParams.get(`acct${i}`);
+        const token = urlParams.get(`token${i}`);
+        const cur = urlParams.get(`cur${i}`);
+
+        if (acct && token && cur) {
+          oauthAccounts.push({
+            loginid: acct,
+            currency: cur,
+            is_virtual: acct.startsWith('VRT'),
+            token: token
+          });
+        }
+      }
+
+      if (oauthAccounts.length > 0) {
+        console.log(`✅ OAuth: ${oauthAccounts.length} contas encontradas na URL`);
+
+        setAvailableAccounts(oauthAccounts);
+
+        if (!currentAccount) {
+          const primaryAccount = oauthAccounts.find(acc => !acc.is_virtual) || oauthAccounts[0];
+          setCurrentAccount(primaryAccount);
+          console.log('🎯 OAuth: Conta ativa definida:', primaryAccount.loginid);
+        }
+        return;
+      }
+
+      // ESTRATÉGIA 2: Buscar via API status (contém contas salvas)
+      const statusResponse = await axios.get('/api/auth/deriv/status');
+      if (statusResponse.data.success && statusResponse.data.available_accounts) {
+        const accounts = statusResponse.data.available_accounts;
+
+        if (accounts.length > 0) {
+          console.log(`✅ Status: ${accounts.length} contas carregadas`);
+
+          setAvailableAccounts(accounts);
+
+          if (!currentAccount) {
+            const primaryAccount = accounts.find((acc: any) => !acc.is_virtual) || accounts[0];
+            setCurrentAccount(primaryAccount);
+            console.log('🎯 Status: Conta ativa definida:', primaryAccount.loginid);
+          }
+          return;
+        }
+      }
+
+      // ESTRATÉGIA 3: Buscar via API fetch-all (última tentativa)
       try {
         const allAccountsResponse = await axios.post('/api/auth/deriv/fetch-all-accounts');
-        if (allAccountsResponse.data.success) {
-          // Usar available_accounts se accounts não estiver disponível
-          const accounts = allAccountsResponse.data.accounts || allAccountsResponse.data.available_accounts || [];
-          console.log('✅ AuthContext: Todas as contas carregadas via API:', accounts.length);
+        if (allAccountsResponse.data.success && allAccountsResponse.data.available_accounts) {
+          const accounts = allAccountsResponse.data.available_accounts;
+          console.log(`✅ FetchAll: ${accounts.length} contas encontradas`);
+
           setAvailableAccounts(accounts);
 
           if (!currentAccount && accounts.length > 0) {
-            // Priorizar conta Real (não virtual)
             const primaryAccount = accounts.find((acc: DerivAccount) => !acc.is_virtual) || accounts[0];
             setCurrentAccount(primaryAccount);
-            console.log('🎯 AuthContext: Conta atual definida:', primaryAccount.loginid);
+            console.log('🎯 FetchAll: Conta ativa definida:', primaryAccount.loginid);
           }
-          return; // Success, return early
+          return;
         }
       } catch (apiError) {
-        console.log('⚠️ Erro ao buscar via API, usando fallback...', apiError);
+        console.log('⚠️ FetchAll API falhou:', apiError);
       }
 
-      // Fallback: usar endpoint de status
-      const response = await axios.get('/api/auth/deriv/status');
-      if (response.data.success && response.data.available_accounts) {
-        console.log('✅ AuthContext: Contas carregadas via status:', response.data.available_accounts.length);
+      console.log('❌ Nenhuma conta encontrada em todas as estratégias');
 
-        // Log detalhado das contas encontradas
-        response.data.available_accounts.forEach((acc: any, idx: number) => {
-          console.log(`   ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency}`);
-        });
-
-        setAvailableAccounts(response.data.available_accounts);
-
-        if (!currentAccount && response.data.available_accounts.length > 0) {
-          // Priorizar conta Real (não virtual)
-          const primaryAccount = response.data.available_accounts.find((acc: DerivAccount) => !acc.is_virtual)
-            || response.data.available_accounts[0];
-          setCurrentAccount(primaryAccount);
-          console.log('🎯 AuthContext: Conta atual definida (fallback):', primaryAccount.loginid);
-        }
-      } else {
-        console.log('⚠️ Nenhuma conta encontrada no endpoint de status');
-      }
     } catch (error) {
       console.error('❌ Erro ao buscar contas:', error);
       toast.error('Erro ao carregar contas da Deriv');
+    } finally {
+      setFetchAccountsRunning(false);
     }
   };
 
@@ -219,12 +260,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setLoading(true);
 
-      // Chamar endpoint para trocar conta (usar is_virtual em vez de account_id)
-      const response = await axios.post('/api/auth/deriv/switch-account', {
+      console.log('🔄 AuthContext: Iniciando switch de conta:', {
+        from: currentAccount?.loginid || 'N/A',
+        to: account.loginid,
         is_virtual: account.is_virtual
       });
 
+      // Chamar endpoint para trocar conta (usar loginid específico)
+      const response = await axios.post('/api/auth/deriv/switch-account', {
+        is_virtual: account.is_virtual,
+        loginid: account.loginid
+      });
+
       if (response.data.success) {
+        // Atualizar conta atual IMEDIATAMENTE
         setCurrentAccount(account);
 
         // Atualizar dados do usuário com a nova conta
@@ -241,11 +290,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           deriv_is_virtual: account.is_virtual
         }));
 
+        console.log('✅ AuthContext: Switch realizado com sucesso:', {
+          new_account: account.loginid,
+          is_virtual: account.is_virtual
+        });
+
         toast.success(`Conta alterada para: ${account.loginid} (${account.currency}) - ${account.is_virtual ? 'Virtual' : 'Real'}`);
+      } else {
+        throw new Error(response.data.error || 'Erro no switch de conta');
       }
-    } catch (error) {
-      console.error('Erro ao trocar conta:', error);
-      toast.error('Erro ao trocar conta');
+    } catch (error: any) {
+      console.error('❌ AuthContext: Erro ao trocar conta:', error);
+      toast.error(error.response?.data?.error || 'Erro ao trocar conta');
     } finally {
       setLoading(false);
     }

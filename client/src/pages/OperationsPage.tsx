@@ -103,6 +103,7 @@ const OperationsPage: React.FC = () => {
   
   const wsRef = useRef<WebSocket | null>(null);
   const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const initializationRef = useRef<boolean>(false); // CORREÇÃO: Controle de inicialização
 
   const loadAvailableBots = useCallback(async () => {
     try {
@@ -183,20 +184,23 @@ const OperationsPage: React.FC = () => {
           });
         }
 
-        // NOTIFICATION CONTROL: Only show notification once per session
+        // NOTIFICATION CONTROL: Only show notification once per OAuth session
         const notificationKey = `deriv_connected_${response.data.account_id}`;
         const lastNotification = sessionStorage.getItem(notificationKey);
-        if (!lastNotification) {
+        const oauthProcessed = sessionStorage.getItem('oauth_callback_processed');
+
+        if (!lastNotification && !oauthProcessed) {
           toast.success(`Conta Deriv conectada: ${response.data.account_id} (${response.data.deriv_currency})`);
           sessionStorage.setItem(notificationKey, currentTime.toString());
+          console.log('✅ Notificação de conexão exibida');
         } else {
-          console.log('🔇 Notificação já exibida nesta sessão, pulando...');
+          console.log('🔇 Notificação já exibida ou OAuth já processado, pulando...');
         }
 
         // FETCH ACCOUNTS: Load all available accounts after successful connection
         try {
           console.log('🔄 Buscando contas disponíveis após conexão OAuth...');
-          await fetchAccounts();
+          await fetchAccounts('oauth-callback');
           console.log('✅ Contas carregadas com sucesso após OAuth');
         } catch (fetchError) {
           console.error('⚠️ Erro ao buscar contas após OAuth:', fetchError);
@@ -335,36 +339,47 @@ const OperationsPage: React.FC = () => {
     }
   };
 
+  // CORREÇÃO: WebSocket com cleanup adequado
   const connectToDerivWS = useCallback(async () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-    
+    // Prevenir múltiplas conexões
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('⏭️ WebSocket já conectado, pulando...');
+      return;
+    }
+
+    // Limpar conexão anterior se existir
+    if (wsRef.current) {
+      console.log('🧹 Fechando conexão WebSocket anterior...');
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
     setIsConnectingWs(true);
-    console.log('Iniciando conexão WebSocket...');
-    
+    console.log('🌐 Iniciando conexão WebSocket...');
+
     try {
       const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=82349');
       wsRef.current = ws;
-      
+
       ws.onopen = () => {
-        console.log('Conectado ao WebSocket da Deriv');
+        console.log('✅ Conectado ao WebSocket da Deriv');
         setWsConnection(ws);
         setIsConnectingWs(false);
-        
+
         const request = {
           ticks: selectedSymbol,
           subscribe: 1,
           req_id: Date.now()
         };
-        
+
         ws.send(JSON.stringify(request));
-        console.log('Solicitação de dados enviada para:', selectedSymbol);
+        console.log('📡 Solicitação enviada para:', selectedSymbol);
       };
-      
+
       ws.onmessage = (event) => {
         try {
           const response = JSON.parse(event.data);
-          console.log('Dados recebidos:', response);
-          
+
           if (response.tick) {
             const tickData = {
               time: new Date(response.tick.epoch * 1000).toLocaleTimeString('pt-BR', {
@@ -375,192 +390,140 @@ const OperationsPage: React.FC = () => {
               price: response.tick.quote,
               timestamp: response.tick.epoch * 1000
             };
-            
+
             setCurrentPrice(tickData.price);
-            
+
             setChartData(prev => {
               const newData = [...prev, tickData].slice(-50);
-              console.log('Dados do gráfico atualizados:', newData.length, 'pontos');
               return newData;
             });
           }
-          
+
           if (response.error) {
-            console.error('Erro no WebSocket:', response.error.message);
+            console.error('❌ Erro no WebSocket:', response.error.message);
           }
         } catch (error) {
-          console.error('Erro ao processar dados do WebSocket:', error);
+          console.error('❌ Erro ao processar dados:', error);
         }
       };
-      
+
       ws.onerror = (error) => {
-        console.error('Erro no WebSocket:', error);
+        console.error('❌ Erro no WebSocket:', error);
         setIsConnectingWs(false);
       };
-      
-      ws.onclose = () => {
-        console.log('WebSocket fechado');
+
+      ws.onclose = (event) => {
+        console.log('🔌 WebSocket fechado:', event.code, event.reason);
         setWsConnection(null);
         setIsConnectingWs(false);
-        
-        setTimeout(() => {
-          console.log('Tentando reconectar...');
-          connectToDerivWS();
-        }, 5000);
+
+        // Só reconectar se não foi fechamento intencional
+        if (event.code !== 1000 && wsRef.current === ws) {
+          setTimeout(() => {
+            console.log('🔄 Tentando reconectar...');
+            connectToDerivWS();
+          }, 5000);
+        }
       };
-      
+
     } catch (error) {
-      console.error('Erro ao conectar WebSocket:', error);
+      console.error('❌ Erro ao conectar WebSocket:', error);
       setIsConnectingWs(false);
     }
   }, [selectedSymbol]);
 
+  // CORREÇÃO: useEffect principal otimizado
   useEffect(() => {
-    console.log('🚀 OperationsPage: useEffect executado!', {
-      isInitialized,
-      currentUrl: window.location.href,
-      hasSearchParams: window.location.search.length > 0,
-      timestamp: new Date().toISOString()
-    });
-
-    if (isInitialized) {
-      console.log('⏭️ Componente já inicializado, pulando...');
+    // Prevenir múltiplas inicializações
+    if (initializationRef.current) {
+      console.log('⏭️ Inicialização já em andamento, pulando...');
       return;
     }
 
-    console.log('🚀 OperationsPage: Inicializando componente... [NOTIFICATION FIX v1 - ' + Date.now() + ']');
+    initializationRef.current = true;
+    console.log('🚀 OperationsPage: Inicializando...', new Date().toISOString());
 
-    // Restaurar estado da conexão Deriv do localStorage
-    const savedDerivConnected = localStorage.getItem('deriv_connected');
-    const savedAccountData = localStorage.getItem('deriv_account_data');
-
-    if (savedDerivConnected === 'true' && savedAccountData) {
-      console.log('🔄 Restaurando estado Deriv do localStorage...');
-      setDerivConnected(true);
-
-      try {
-        const accountData = JSON.parse(savedAccountData);
-        if (user && updateUser) {
-          updateUser({
-            ...user,
-            deriv_connected: true,
-            deriv_account_id: accountData.account_id,
-            deriv_email: accountData.deriv_email,
-            deriv_currency: accountData.deriv_currency,
-            deriv_is_virtual: accountData.deriv_is_virtual,
-            deriv_fullname: accountData.deriv_fullname
-          });
-        }
-      } catch (error) {
-        console.error('❌ Erro ao restaurar dados da conta Deriv:', error);
-      }
-    }
-
-    // Verificar estado inicial do contexto de autenticação
-    if (user?.deriv_connected) {
-      console.log('🔗 Usuário já tem Deriv conectado no contexto, sincronizando...');
-      setDerivConnected(true);
-    }
-    
-    // Inicializar dados da página
     const initializeOperationsPage = async () => {
       try {
-        // Verificar se há parâmetros OAuth na URL primeiro
+        // Verificar OAuth primeiro
         const urlParams = new URLSearchParams(window.location.search);
-        
-        // Debug completo da URL atual
-        console.log('🔍 DEBUG URL atual:', {
-          fullUrl: window.location.href,
-          pathname: window.location.pathname,
-          search: window.location.search,
-          allParams: Object.fromEntries(urlParams.entries())
-        });
-        
-        // Verificar múltiplas contas (como EonPro: acct1, acct2, acct3)
-        const accounts = [];
+        const oauthAccounts = [];
+
         for (let i = 1; i <= 3; i++) {
           const token = urlParams.get(`token${i}`);
           const account = urlParams.get(`acct${i}`);
           const currency = urlParams.get(`cur${i}`);
-          
-          console.log(`🔍 Verificando conta ${i}:`, { token: token ? token.substring(0, 10) + '...' : null, account, currency });
-          
+
           if (token && account) {
-            accounts.push({
-              token,
-              account,
-              currency: currency || 'USD',
-              index: i
-            });
+            oauthAccounts.push({ token, account, currency: currency || 'USD', index: i });
           }
         }
-        
-        const oauthState = urlParams.get('state');
-        const oauthLang = urlParams.get('lang');
-        
-        if (accounts.length > 0) {
-          console.log('🎉 Parâmetros OAuth detectados na URL!', {
-            totalAccounts: accounts.length,
-            accounts: accounts.map(acc => ({
-              account: acc.account,
-              currency: acc.currency,
-              token: acc.token.substring(0, 10) + '...'
-            })),
-            state: oauthState ? 'presente' : 'ausente',
-            lang: oauthLang
-          });
-          
+
+        if (oauthAccounts.length > 0 && !sessionStorage.getItem('oauth_callback_processed')) {
+          console.log(`🎉 OAuth: ${oauthAccounts.length} contas detectadas`);
+
           try {
-            // Usar a primeira conta real (não demo) ou a primeira disponível
-            const realAccount = accounts.find(acc => !acc.account.startsWith('VR')) || accounts[0];
-            console.log('🎯 Usando conta:', realAccount.account, `(${realAccount.currency})`);
-            
-            await processOAuthCallback(realAccount.token, realAccount.account, oauthState);
-            
-            // Limpar URL dos parâmetros OAuth
+            const primaryAccount = oauthAccounts.find(acc => !acc.account.startsWith('VR')) || oauthAccounts[0];
+            await processOAuthCallback(primaryAccount.token, primaryAccount.account, urlParams.get('state'));
+
+            sessionStorage.setItem('oauth_callback_processed', 'true');
             window.history.replaceState({}, document.title, '/operations');
           } catch (oauthError) {
-            console.error('❌ Erro ao processar OAuth callback:', oauthError);
-            toast.error('Erro ao processar autorização da Deriv');
+            console.error('❌ OAuth erro:', oauthError);
+            toast.error('Erro ao processar autorização');
           }
         }
-        
-        console.log('🔄 Carregando configurações iniciais...');
+
+        // Restaurar estado local
+        const savedDerivConnected = localStorage.getItem('deriv_connected');
+        if (savedDerivConnected === 'true') {
+          setDerivConnected(true);
+        }
+
+        // Carregar dados iniciais
+        console.log('🔄 Carregando dados iniciais...');
         await Promise.all([
           loadAvailableBots(),
-          loadDerivConfig()
+          loadDerivConfig(),
+          checkDerivConnection(false)
         ]);
-        
-        console.log('🔍 Verificando status inicial da conexão Deriv...');
-        await checkDerivConnection(false);
-        
-        console.log('🌐 Iniciando conexão WebSocket...');
-        connectToDerivWS();
-        
+
+        // Conectar WebSocket
+        await connectToDerivWS();
+
         setIsInitialized(true);
-        console.log('✅ Inicialização da OperationsPage concluída');
+        console.log('✅ Inicialização concluída');
+
       } catch (error) {
         console.error('❌ Erro na inicialização:', error);
       }
     };
-    
+
     initializeOperationsPage();
-    
-    // Verificar conexão Deriv a cada 60 segundos (aumentado para reduzir logs)
-    statusCheckIntervalRef.current = setInterval(() => {
-      checkDerivConnection(true); // silent = true para reduzir logs
-    }, 60000);
-    
+
+    // CORREÇÃO: Verificação de status controlada
+    if (!statusCheckIntervalRef.current) {
+      statusCheckIntervalRef.current = setInterval(() => {
+        checkDerivConnection(true);
+      }, 60000);
+    }
+
     return () => {
-      console.log('🧹 Limpando recursos da OperationsPage...');
+      console.log('🧹 Cleanup OperationsPage...');
+
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
+
       if (statusCheckIntervalRef.current) {
         clearInterval(statusCheckIntervalRef.current);
+        statusCheckIntervalRef.current = null;
       }
+
+      initializationRef.current = false;
     };
-  }, [isInitialized, user, loadAvailableBots, loadDerivConfig, connectToDerivWS, processOAuthCallback]);
+  }, []); // CORREÇÃO: Array de dependências vazio para executar apenas uma vez
 
   // Sincronizar com mudanças no contexto de autenticação
   useEffect(() => {

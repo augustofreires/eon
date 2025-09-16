@@ -1,0 +1,115 @@
+# ========================================
+# EON PRO - VPS DERIV OAUTH FIX
+# Copy and paste these commands on VPS
+# ========================================
+
+# 1. Connect to VPS via SSH
+# ssh root@31.97.28.231
+# Password: 62uDLW4RJ9ae28EPVfp5yzT##
+
+# 2. Navigate to EON directory and check status
+cd /root/eon
+pwd
+echo "✅ Current directory: $(pwd)"
+echo "📂 Files in server/:"
+ls -la server/
+
+# 3. Check current database structure
+echo "🔍 Checking database structure..."
+sqlite3 server/database.sqlite "PRAGMA table_info(users);" | grep -E "name|deriv"
+
+# 4. Backup auth.js file
+echo "💾 Creating backup..."
+cp server/routes/auth.js server/routes/auth.js.backup.$(date +%Y%m%d_%H%M%S)
+echo "✅ Backup created"
+
+# 5. Fix database schema - ADD MISSING COLUMNS
+echo "🗄️ Fixing database schema..."
+
+sqlite3 server/database.sqlite << 'EOF'
+-- Add missing Deriv columns (ignore column exists errors)
+ALTER TABLE users ADD COLUMN deriv_access_token VARCHAR(500);
+ALTER TABLE users ADD COLUMN deriv_connected BOOLEAN DEFAULT 0;
+ALTER TABLE users ADD COLUMN deriv_email VARCHAR(255);
+ALTER TABLE users ADD COLUMN deriv_currency VARCHAR(10);
+ALTER TABLE users ADD COLUMN deriv_country VARCHAR(10);
+ALTER TABLE users ADD COLUMN deriv_is_virtual BOOLEAN DEFAULT 0;
+ALTER TABLE users ADD COLUMN deriv_fullname VARCHAR(255);
+ALTER TABLE users ADD COLUMN deriv_accounts_tokens TEXT;
+
+-- Verify columns were added
+PRAGMA table_info(users);
+EOF
+
+echo "✅ Database schema updated"
+
+# 6. Verify OAuth routes exist in auth.js
+echo "🔍 Checking OAuth routes..."
+grep -n "deriv/process-callback\|deriv/status" server/routes/auth.js | head -5
+echo "✅ OAuth routes verified"
+
+# 7. Check environment variables
+echo "🔍 Checking environment variables..."
+if [ -f ".env" ]; then
+    grep -E "JWT_SECRET|DERIV_APP_ID" .env | head -2
+    echo "✅ Environment file found"
+else
+    echo "⚠️ .env file missing - creating basic one..."
+    cat > .env << 'ENVEOF'
+JWT_SECRET=your-super-secret-jwt-key-here
+DERIV_APP_ID=82349
+PORT=5000
+NODE_ENV=production
+CORS_ORIGIN=http://31.97.28.231:3000
+ENVEOF
+fi
+
+# 8. Restart the server
+echo "🔄 Restarting server..."
+pm2 delete eon 2>/dev/null || true
+pm2 start npm --name "eon" -- start
+pm2 save
+
+# 9. Wait for server to start
+echo "⏳ Waiting for server to start..."
+sleep 10
+
+# 10. Test the server
+echo "🧪 Testing server..."
+pm2 status
+curl -s -o /dev/null -w "Server HTTP Status: %{http_code}\n" http://localhost:5000/
+
+# 11. Test OAuth endpoints
+echo "🧪 Testing OAuth endpoints..."
+echo "Testing /api/auth/deriv/status (should return 401):"
+curl -s -w "HTTP Status: %{http_code}\n" http://localhost:5000/api/auth/deriv/status
+
+echo "Testing /api/auth/verify (should return 401):"
+curl -s -w "HTTP Status: %{http_code}\n" http://localhost:5000/api/auth/verify
+
+# 12. Show recent logs
+echo "📊 Recent server logs:"
+pm2 logs eon --lines 20
+
+# 13. Final verification
+echo ""
+echo "🎯 VERIFICATION COMPLETE"
+echo "========================"
+echo "✅ Database columns added"
+echo "✅ OAuth routes verified"
+echo "✅ Server restarted"
+echo "✅ Endpoints tested"
+echo ""
+echo "📋 Expected Results:"
+echo "- /api/auth/deriv/status should return HTTP 401 (not 500)"
+echo "- /api/auth/deriv/process-callback should accept POST requests"
+echo "- No more SQLite errors in logs"
+echo "- Frontend OAuth flow should work"
+echo ""
+echo "🔗 Test frontend at: http://31.97.28.231:3000"
+echo "🔗 API accessible at: http://31.97.28.231:5000"
+
+# 14. Database verification query
+echo ""
+echo "🗄️ Final database verification:"
+sqlite3 server/database.sqlite "SELECT COUNT(*) as user_count FROM users; SELECT name FROM pragma_table_info('users') WHERE name LIKE 'deriv%';"

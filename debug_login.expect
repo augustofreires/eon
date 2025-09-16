@@ -1,0 +1,119 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "# " {
+        # Check PM2 status and logs
+        send "echo '=== PM2 STATUS ==='\r"
+        expect "# "
+        send "pm2 status\r"
+        expect "# "
+
+        # Get recent server logs
+        send "echo '\\n=== RECENT SERVER LOGS ==='\r"
+        expect "# "
+        send "pm2 logs server --lines 10 --nostream\r"
+        expect "# "
+
+        # Check PostgreSQL connection and user data
+        send "echo '\\n=== CHECKING POSTGRESQL CONNECTION ==='\r"
+        expect "# "
+        send "psql $DATABASE_URL -c \"SELECT email, password_hash, role, status FROM users WHERE email = 'teste@iaeon.com';\"\r"
+        expect "# "
+
+        # Check environment variables
+        send "echo '\\n=== CHECKING ENVIRONMENT VARIABLES ==='\r"
+        expect "# "
+        send "cd /root/eon && grep -E '^(DATABASE_URL|JWT_SECRET|NODE_ENV)' .env\r"
+        expect "# "
+
+        # Create a test script to debug bcrypt comparison
+        send "echo '\\n=== CREATING BCRYPT TEST SCRIPT ==='\r"
+        expect "# "
+        send "cat > /tmp/test_bcrypt.js << 'EOF'
+const bcrypt = require('bcryptjs');
+
+const testPassword = '123456';
+const hashFromDB = '\\$2a\\$12\\$kHqQ.VfJvQc9wjrECPKlieWP1vYVKxgXlFrH2vlKbVhxJqKuBb7N.';
+
+console.log('Testing bcrypt comparison:');
+console.log('Password:', testPassword);
+console.log('Hash from DB:', hashFromDB);
+
+bcrypt.compare(testPassword, hashFromDB).then(isValid => {
+  console.log('Bcrypt comparison result:', isValid);
+  if (isValid) {
+    console.log('✅ Password matches!');
+  } else {
+    console.log('❌ Password does not match!');
+  }
+}).catch(err => {
+  console.error('Error during bcrypt comparison:', err);
+});
+EOF\r"
+        expect "# "
+
+        # Run the bcrypt test
+        send "echo '\\n=== RUNNING BCRYPT TEST ==='\r"
+        expect "# "
+        send "cd /root/eon && node /tmp/test_bcrypt.js\r"
+        expect "# "
+
+        # Test database query directly
+        send "echo '\\n=== TESTING DATABASE QUERY DIRECTLY ==='\r"
+        expect "# "
+        send "cat > /tmp/test_db_query.js << 'EOF'
+require('dotenv').config();
+const { query } = require('/root/eon/server/database/connection');
+
+async function testQuery() {
+  try {
+    const result = await query(
+      'SELECT id, email, password_hash, name, role, status FROM users WHERE email = \\$1',
+      ['teste@iaeon.com']
+    );
+
+    console.log('Query result:');
+    console.log('Rows found:', result.rows.length);
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      console.log('User data:', {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        status: user.status,
+        password_hash_length: user.password_hash ? user.password_hash.length : 0,
+        password_hash_starts_with: user.password_hash ? user.password_hash.substring(0, 10) : 'null'
+      });
+    }
+  } catch (error) {
+    console.error('Database query error:', error);
+  }
+  process.exit(0);
+}
+
+testQuery();
+EOF\r"
+        expect "# "
+
+        send "echo '\\n=== RUNNING DATABASE QUERY TEST ==='\r"
+        expect "# "
+        send "cd /root/eon && node /tmp/test_db_query.js\r"
+        expect "# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect eof

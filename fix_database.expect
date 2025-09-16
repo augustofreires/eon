@@ -1,0 +1,90 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "# " {
+        send "cd /root/eon\r"
+        expect "# "
+
+        # Check for actual SQLite database files
+        send "echo '=== LOOKING FOR SQLITE DATABASE FILES ==='\r"
+        expect "# "
+        send "find . -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3'\r"
+        expect "# "
+
+        # Check the symlink
+        send "echo '\\n=== CHECKING SYMLINK ==='\r"
+        expect "# "
+        send "ls -la server/database/sqlite.db\r"
+        expect "# "
+
+        # Check the target of symlink
+        send "echo '\\n=== CHECKING SYMLINK TARGET ==='\r"
+        expect "# "
+        send "ls -la /root/eon/server/database.sqlite\r"
+        expect "# "
+
+        # Check connection-sqlite.js to understand database path
+        send "echo '\\n=== CHECKING SQLITE CONNECTION FILE ==='\r"
+        expect "# "
+        send "cat server/database/connection-sqlite.js\r"
+        expect "# "
+
+        # Check environment variables affecting database choice
+        send "echo '\\n=== CHECKING DATABASE ENVIRONMENT VARIABLES ==='\r"
+        expect "# "
+        send "grep -E '(DATABASE_URL|DB_HOST)' .env\r"
+        expect "# "
+
+        # Since both DATABASE_URL and DB_HOST are not set, it should use SQLite
+        # Let's check if SQLite database needs to be initialized
+        send "echo '\\n=== CHECKING SQLITE SETUP SCRIPT ==='\r"
+        expect "# "
+        send "head -20 server/database/setup-sqlite.js\r"
+        expect "# "
+
+        # Initialize SQLite database
+        send "echo '\\n=== INITIALIZING SQLITE DATABASE ==='\r"
+        expect "# "
+        send "node server/database/setup-sqlite.js\r"
+        expect "# "
+
+        # Check if database was created
+        send "echo '\\n=== CHECKING DATABASE AFTER INITIALIZATION ==='\r"
+        expect "# "
+        send "ls -la database.db\r"
+        expect "# "
+
+        # Check tables in database
+        send "echo '\\n=== CHECKING TABLES ==='\r"
+        expect "# "
+        send "sqlite3 database.db '.tables'\r"
+        expect "# "
+
+        # Check users table structure
+        send "echo '\\n=== CHECKING USERS TABLE STRUCTURE ==='\r"
+        expect "# "
+        send "sqlite3 database.db '.schema users'\r"
+        expect "# "
+
+        # Check existing users
+        send "echo '\\n=== CHECKING EXISTING USERS ==='\r"
+        expect "# "
+        send "sqlite3 database.db 'SELECT id, email, role, status FROM users;'\r"
+        expect "# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect eof

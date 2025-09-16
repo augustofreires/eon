@@ -9,23 +9,148 @@ const WebSocket = require('ws');
 
 const router = express.Router();
 
-// Função para validar token e buscar múltiplas contas via Deriv WebSocket API
+// Função para autorizar TODOS os tokens individualmente seguindo padrão oficial Deriv
+const authorizeAllAccountTokens = (accounts) => {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '82349'}`);
+
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error('Timeout: Authorization of multiple accounts took too long'));
+    }, 30000); // 30 seconds for multiple authorizations
+
+    let authorizedAccounts = [];
+    let currentIndex = 0;
+    let requestId = 1;
+
+    ws.onopen = () => {
+      console.log(`🔗 Connected to Deriv WebSocket for authorizing ${accounts.length} accounts`);
+
+      // Start authorizing first account
+      if (accounts.length > 0) {
+        const firstAccount = accounts[0];
+        console.log(`🔑 Authorizing account 1/${accounts.length}: ${firstAccount.loginid}`);
+
+        ws.send(JSON.stringify({
+          authorize: firstAccount.token,
+          req_id: requestId++
+        }));
+      } else {
+        clearTimeout(timeout);
+        ws.close();
+        reject(new Error('No accounts to authorize'));
+      }
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const response = JSON.parse(event.data);
+        console.log(`📨 Authorization response ${response.req_id}:`, {
+          loginid: response.authorize?.loginid || 'N/A',
+          msg_type: response.msg_type
+        });
+
+        if (response.error) {
+          console.error(`❌ Authorization error for account ${currentIndex + 1}:`, response.error);
+
+          // Try next account if current one fails
+          currentIndex++;
+          if (currentIndex < accounts.length) {
+            const nextAccount = accounts[currentIndex];
+            console.log(`🔑 Authorizing account ${currentIndex + 1}/${accounts.length}: ${nextAccount.loginid}`);
+
+            ws.send(JSON.stringify({
+              authorize: nextAccount.token,
+              req_id: requestId++
+            }));
+          } else {
+            // All accounts processed
+            clearTimeout(timeout);
+            ws.close();
+
+            if (authorizedAccounts.length === 0) {
+              reject(new Error('No accounts could be authorized'));
+            } else {
+              resolve(authorizedAccounts);
+            }
+          }
+          return;
+        }
+
+        if (response.authorize) {
+          // Account successfully authorized
+          const accountData = {
+            loginid: response.authorize.loginid,
+            email: response.authorize.email,
+            currency: response.authorize.currency,
+            country: response.authorize.country,
+            is_virtual: response.authorize.is_virtual,
+            fullname: response.authorize.fullname,
+            token: accounts[currentIndex].token,
+            account_list: response.authorize.account_list || []
+          };
+
+          authorizedAccounts.push(accountData);
+          console.log(`✅ Account ${currentIndex + 1} authorized:`, {
+            loginid: accountData.loginid,
+            is_virtual: accountData.is_virtual,
+            currency: accountData.currency
+          });
+
+          // Move to next account
+          currentIndex++;
+          if (currentIndex < accounts.length) {
+            const nextAccount = accounts[currentIndex];
+            console.log(`🔑 Authorizing account ${currentIndex + 1}/${accounts.length}: ${nextAccount.loginid}`);
+
+            ws.send(JSON.stringify({
+              authorize: nextAccount.token,
+              req_id: requestId++
+            }));
+          } else {
+            // All accounts processed successfully
+            clearTimeout(timeout);
+            ws.close();
+
+            console.log(`🎉 All ${authorizedAccounts.length} accounts authorized successfully!`);
+            resolve(authorizedAccounts);
+          }
+        }
+      } catch (error) {
+        clearTimeout(timeout);
+        console.error('❌ Error parsing authorization response:', error);
+        ws.close();
+        reject(error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      clearTimeout(timeout);
+      console.error('❌ WebSocket error during authorization:', error);
+      reject(new Error('WebSocket authorization error'));
+    };
+
+    ws.onclose = (code, reason) => {
+      clearTimeout(timeout);
+      console.log(`🔌 Authorization WebSocket closed: ${code} ${reason}`);
+    };
+  });
+};
+
+// Função SIMPLIFICADA para apenas validar token (sem buscar contas adicionais)
 const validateTokenAndGetAccounts = (token) => {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=82349');
+    const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '82349'}`);
 
     const timeout = setTimeout(() => {
       ws.close();
       reject(new Error('Timeout: WebSocket connection took too long'));
-    }, 15000); // 15 seconds timeout for multiple requests
-
-    let accountData = {};
-    let accountsList = [];
+    }, 10000); // 10 seconds timeout for simple validation
 
     ws.onopen = () => {
-      console.log('🔗 Connected to Deriv WebSocket for token validation and account fetching');
+      console.log('🔗 Connected to Deriv WebSocket for simple token validation');
 
-      // Send authorize request
+      // Send ONLY authorize request
       const authorizeRequest = {
         authorize: token,
         req_id: 1
@@ -37,7 +162,7 @@ const validateTokenAndGetAccounts = (token) => {
     ws.onmessage = (event) => {
       try {
         const response = JSON.parse(event.data);
-        console.log('📨 Deriv WebSocket response:', { req_id: response.req_id, msg_type: response.msg_type });
+        console.log('📨 Deriv validation response:', { req_id: response.req_id, msg_type: response.msg_type });
 
         if (response.error) {
           console.error('❌ Deriv API error:', response.error);
@@ -56,7 +181,7 @@ const validateTokenAndGetAccounts = (token) => {
             is_virtual: response.authorize.is_virtual
           });
 
-          accountData = {
+          const accountData = {
             loginid: response.authorize.loginid,
             email: response.authorize.email,
             currency: response.authorize.currency,
@@ -66,45 +191,9 @@ const validateTokenAndGetAccounts = (token) => {
             token: token
           };
 
-          // EXTRAIR MÚLTIPLAS CONTAS DA RESPOSTA DO AUTHORIZE
-          let availableAccounts = [];
-
-          if (response.authorize.account_list && Array.isArray(response.authorize.account_list)) {
-            console.log('📋 Lista de contas encontrada no authorize:', response.authorize.account_list.length);
-
-            availableAccounts = response.authorize.account_list.map(account => ({
-              // IMPORTANTE: Cada conta na lista não tem token individual
-              // O OAuth da Deriv fornece apenas o token da conta principal
-              token: token, // Todas usam o mesmo token inicialmente
-              loginid: account.loginid,
-              currency: account.currency,
-              is_virtual: account.is_virtual === 1 || account.is_virtual === true,
-              account_type: account.account_type,
-              landing_company_name: account.landing_company_name
-            }));
-
-            console.log('📊 Contas processadas:');
-            availableAccounts.forEach((acc, idx) => {
-              console.log(`  ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency} - ${acc.account_type}`);
-            });
-          } else {
-            console.log('ℹ️ account_list não encontrada, usando conta principal apenas');
-            availableAccounts = [{
-              token: token,
-              loginid: accountData.loginid,
-              currency: accountData.currency,
-              is_virtual: accountData.is_virtual
-            }];
-          }
-
           clearTimeout(timeout);
           ws.close();
-
-          // Retornar dados completos incluindo múltiplas contas
-          resolve({
-            ...accountData,
-            available_accounts: availableAccounts
-          });
+          resolve(accountData);
         }
       } catch (error) {
         clearTimeout(timeout);
@@ -123,6 +212,96 @@ const validateTokenAndGetAccounts = (token) => {
     ws.onclose = (code, reason) => {
       clearTimeout(timeout);
       console.log('🔌 WebSocket closed:', code, reason);
+    };
+  });
+};
+
+// Função para obter tokens específicos para contas virtuais via API
+const getVirtualAccountTokens = (realAccountToken, virtualLoginIds) => {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=82349');
+
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error('Timeout: Virtual account token fetching took too long'));
+    }, 15000);
+
+    let authorizedAccounts = [];
+    let requestCounter = 100; // Start from 100 to avoid conflicts
+
+    ws.onopen = () => {
+      console.log('🔗 Connected to Deriv WebSocket for virtual account tokens');
+
+      // First, authorize with real account token
+      const authorizeRequest = {
+        authorize: realAccountToken,
+        req_id: requestCounter++
+      };
+
+      ws.send(JSON.stringify(authorizeRequest));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const response = JSON.parse(event.data);
+        console.log('📨 Virtual token response:', { req_id: response.req_id, msg_type: response.msg_type });
+
+        if (response.error) {
+          console.error('❌ Virtual token error:', response.error);
+          clearTimeout(timeout);
+          ws.close();
+          reject(new Error(`Virtual token error: ${response.error.message}`));
+          return;
+        }
+
+        if (response.authorize) {
+          console.log('✅ Authorized successfully for token switching');
+
+          // Now try to get tokens for each virtual account
+          virtualLoginIds.forEach((loginid, index) => {
+            const switchRequest = {
+              account_list: 1,
+              req_id: requestCounter++
+            };
+
+            setTimeout(() => {
+              ws.send(JSON.stringify(switchRequest));
+            }, index * 500); // Space out requests
+          });
+
+          // Fallback: resolve with original token for all accounts after 3 seconds
+          setTimeout(() => {
+            clearTimeout(timeout);
+            ws.close();
+            resolve(virtualLoginIds.map(loginid => ({
+              loginid: loginid,
+              token: realAccountToken,
+              note: 'Using real account token (virtual account tokens not available)'
+            })));
+          }, 3000);
+
+        } else if (response.account_list) {
+          console.log('📋 Account list received:', response.account_list);
+          // Process account list if needed
+        }
+
+      } catch (error) {
+        clearTimeout(timeout);
+        console.error('❌ Error parsing virtual token message:', error);
+        ws.close();
+        reject(error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      clearTimeout(timeout);
+      console.error('❌ Virtual token WebSocket error:', error);
+      reject(new Error('Virtual token WebSocket error'));
+    };
+
+    ws.onclose = (code, reason) => {
+      clearTimeout(timeout);
+      console.log('🔌 Virtual token WebSocket closed:', code, reason);
     };
   });
 };
@@ -633,15 +812,25 @@ router.get('/deriv/callback', async (req, res) => {
       isDemo: isDemo
     });
 
-    // Validar token e buscar múltiplas contas com Deriv WebSocket API
+    // IMPLEMENTAÇÃO HÍBRIDA: Validar primeiro token, mas salvar todas as contas
     try {
-      console.log('🔄 Validating token and fetching accounts with Deriv WebSocket API...');
+      console.log('🔄 Validating primary token and saving all accounts...');
 
-      // Usar nova função que busca múltiplas contas
-      const accountData = await validateTokenAndGetAccounts(token);
+      if (accounts.length === 0) {
+        return sendErrorResponse('Nenhuma conta encontrada nos parâmetros OAuth');
+      }
 
-      console.log('✅ Token validation and account fetching successful, saving to database...');
-      
+      console.log(`📊 ${accounts.length} contas encontradas para processar:`);
+      accounts.forEach((acc, idx) => {
+        console.log(`  ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency}`);
+      });
+
+      // Validar apenas o primeiro token para confirmar conectividade
+      const primaryAccount = accounts[0];
+      const accountData = await validateTokenAndGetAccounts(primaryAccount.token);
+
+      console.log('✅ Primary token validation successful, saving all accounts...');
+
       // Usar dados validados da API
       const validatedAccountId = accountData.loginid;
       const validatedIsDemo = accountData.is_virtual;
@@ -664,41 +853,35 @@ router.get('/deriv/callback', async (req, res) => {
         console.log('ℹ️ Database columns might already exist:', columnError.message);
       }
 
-      // Save all accounts as JSON for switching
-      // Combinar contas do OAuth callback + conta validada pela API
-      let allAccounts = [...accounts]; // Contas encontradas no callback OAuth
+      // CORREÇÃO: Salvar TODAS as contas OAuth encontradas
+      console.log(`📊 TOTAL DE CONTAS PARA SALVAR: ${accounts.length}`);
+      console.log('📋 Lista completa de contas OAuth:', accounts.map(acc => ({
+        loginid: acc.loginid,
+        currency: acc.currency,
+        is_virtual: acc.is_virtual,
+        token_prefix: acc.token.substring(0, 10) + '...'
+      })));
 
-      // Adicionar conta principal validada se não estiver na lista
-      const mainAccount = {
-        token: token,
-        loginid: validatedAccountId,
-        currency: accountData.currency,
-        is_virtual: validatedIsDemo
-      };
+      // Preparar dados para salvar no banco (usar contas OAuth + dados validados)
+      const allAccountsForStorage = accounts.map(acc => ({
+        token: acc.token,
+        loginid: acc.loginid,
+        currency: acc.currency,
+        is_virtual: acc.is_virtual,
+        // Adicionar dados validados da conta primária (aplicar a todas)
+        email: accountData.email,
+        fullname: accountData.fullname,
+        country: accountData.country
+      }));
 
-      const accountExists = allAccounts.some(acc => acc.loginid === validatedAccountId);
-      if (!accountExists) {
-        allAccounts.push(mainAccount);
-        console.log('➕ Conta principal adicionada à lista:', mainAccount.loginid);
-      }
+      console.log('💾 Contas preparadas para armazenamento:', allAccountsForStorage.map(acc => ({
+        loginid: acc.loginid,
+        currency: acc.currency,
+        is_virtual: acc.is_virtual,
+        token_length: acc.token.length
+      })));
 
-      // Adicionar contas adicionais da API se disponíveis
-      if (accountData.available_accounts && accountData.available_accounts.length > 0) {
-        accountData.available_accounts.forEach(apiAccount => {
-          const exists = allAccounts.some(acc => acc.loginid === apiAccount.loginid);
-          if (!exists) {
-            allAccounts.push(apiAccount);
-            console.log('➕ Conta adicional da API adicionada:', apiAccount.loginid);
-          }
-        });
-      }
-
-      console.log(`📊 TOTAL DE CONTAS SALVAS: ${allAccounts.length}`);
-      allAccounts.forEach((acc, idx) => {
-        console.log(`  ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency}`);
-      });
-
-      const accountsTokensJson = JSON.stringify(allAccounts);
+      const accountsTokensJson = JSON.stringify(allAccountsForStorage);
 
       const updateResult = await query(`
         UPDATE users
@@ -715,7 +898,7 @@ router.get('/deriv/callback', async (req, res) => {
         WHERE id = $10
         RETURNING id, email
       `, [
-        token,
+        primaryAccount.token,
         validatedAccountId,
         true,
         accountData.email,
@@ -911,8 +1094,17 @@ router.post('/deriv/process-callback', authenticateToken, async (req, res) => {
         token: token1,
         loginid: validatedAccountId,
         currency: accountData.currency,
-        is_virtual: validatedIsDemo
+        is_virtual: validatedIsDemo,
+        email: accountData.email,
+        fullname: accountData.fullname,
+        country: accountData.country
       }]);
+
+      console.log('💾 Conta única preparada para armazenamento (POST):', {
+        loginid: validatedAccountId,
+        currency: accountData.currency,
+        is_virtual: validatedIsDemo
+      });
 
       const updateResult = await query(`
         UPDATE users
@@ -1484,13 +1676,13 @@ router.post('/deriv/fetch-all-accounts', authenticateToken, async (req, res) => 
   }
 });
 
-// Trocar entre conta Virtual e Real (MÉTODO CORRETO)
+// Trocar entre conta Virtual e Real (MÉTODO CORRIGIDO - funciona com um só token)
 router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { is_virtual } = req.body;
+    const { is_virtual, loginid } = req.body; // Aceitar loginid específico
 
-    console.log('🔄 Solicitação de troca de conta:', { userId, is_virtual });
+    console.log('🔄 Solicitação de troca de conta:', { userId, is_virtual, loginid });
 
     // Buscar informações atuais do usuário incluindo tokens de todas as contas
     const userResult = await query(`
@@ -1528,29 +1720,125 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
     }
 
     // Encontrar a conta do tipo desejado
-    const targetAccount = storedAccounts.find(account => account.is_virtual === is_virtual);
+    let targetAccount;
+    if (loginid) {
+      // Buscar por loginid específico
+      targetAccount = storedAccounts.find(account => account.loginid === loginid);
+    } else {
+      // Buscar por tipo (virtual/real)
+      targetAccount = storedAccounts.find(account => account.is_virtual === is_virtual);
+    }
 
     if (!targetAccount) {
       return res.status(400).json({
         success: false,
-        error: `Conta ${is_virtual ? 'Virtual' : 'Real'} não encontrada. Você pode não ter este tipo de conta.`
+        error: `Conta ${loginid || (is_virtual ? 'Virtual' : 'Real')} não encontrada. Você pode não ter este tipo de conta.`
       });
     }
 
     console.log('🎯 Conta encontrada para switch:', {
       from: user.deriv_account_id,
       to: targetAccount.loginid,
-      type: is_virtual ? 'Virtual' : 'Real'
+      type: targetAccount.is_virtual ? 'Virtual' : 'Real'
     });
 
     try {
-      // MÉTODO CORRETO: Validar e autorizar com o token específico da conta desejada
-      console.log('🔄 Validando token da conta alvo:', targetAccount.loginid);
+      // NOVO MÉTODO: Usar token específico da conta de destino (padrão oficial Deriv)
+      console.log('🔄 Switching to account using its specific token (official Deriv pattern)...');
 
-      // Usar a função de validação completa para a conta alvo
-      const switchResult = await validateTokenAndGetAccounts(targetAccount.token);
+      if (!targetAccount.token) {
+        return res.status(400).json({
+          success: false,
+          error: 'Token não encontrado para a conta de destino'
+        });
+      }
 
-      // Atualizar banco de dados com nova conta ativa
+      const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '82349'}`);
+
+      const switchPromise = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          reject(new Error('Timeout durante switch de conta'));
+        }, 10000);
+
+        let switchCompleted = false;
+
+        ws.onopen = () => {
+          console.log('🔗 Connected to WebSocket for account switch');
+
+          // PADRÃO OFICIAL: Autorizar diretamente com o token da conta de destino
+          const authorizeRequest = {
+            authorize: targetAccount.token,
+            req_id: 1
+          };
+
+          console.log(`🔑 Authorizing directly with target account token: ${targetAccount.loginid}`);
+          ws.send(JSON.stringify(authorizeRequest));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const response = JSON.parse(event.data);
+            console.log('📨 Account switch response:', {
+              req_id: response.req_id,
+              msg_type: response.msg_type,
+              loginid: response.authorize?.loginid
+            });
+
+            if (response.error) {
+              console.error('❌ Account switch authorization error:', response.error);
+              clearTimeout(timeout);
+              ws.close();
+              reject(new Error(`Switch authorization error: ${response.error.message}`));
+              return;
+            }
+
+            if (response.req_id === 1 && response.authorize) {
+              // Conta autorizada com sucesso!
+              console.log('✅ Successfully switched to account:', {
+                loginid: response.authorize.loginid,
+                currency: response.authorize.currency,
+                is_virtual: response.authorize.is_virtual
+              });
+
+              clearTimeout(timeout);
+              ws.close();
+
+              // Resolver com os dados da conta autorizada
+              resolve({
+                loginid: response.authorize.loginid,
+                currency: response.authorize.currency,
+                is_virtual: response.authorize.is_virtual,
+                email: response.authorize.email,
+                fullname: response.authorize.fullname,
+                token: targetAccount.token
+              });
+            }
+          } catch (parseError) {
+            console.error('❌ Erro ao processar resposta do switch:', parseError);
+            clearTimeout(timeout);
+            ws.close();
+            reject(parseError);
+          }
+        };
+
+        ws.onerror = (error) => {
+          clearTimeout(timeout);
+          console.error('❌ WebSocket error durante switch:', error);
+          reject(new Error('WebSocket error during switch'));
+        };
+
+        ws.onclose = (code, reason) => {
+          clearTimeout(timeout);
+          if (!switchCompleted) {
+            console.log('🔌 WebSocket fechado durante switch:', code, reason);
+          }
+        };
+      });
+
+      const switchResult = await switchPromise;
+
+      // Atualizar banco de dados com nova conta ativa e seu token
       await query(`
         UPDATE users
         SET deriv_access_token = $1,
@@ -1560,33 +1848,33 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
             updated_at = CURRENT_TIMESTAMP
         WHERE id = $5
       `, [
-        targetAccount.token,
-        targetAccount.loginid,
-        is_virtual,
-        targetAccount.currency,
+        switchResult.token,
+        switchResult.loginid,
+        switchResult.is_virtual,
+        switchResult.currency,
         userId
       ]);
 
-      console.log('✅ Conta trocada com sucesso via re-autorização:', {
+      console.log('✅ Conta trocada com sucesso:', {
         from: user.deriv_account_id,
-        to: targetAccount.loginid,
-        type: is_virtual ? 'Virtual' : 'Real'
+        to: switchResult.loginid,
+        type: switchResult.is_virtual ? 'Virtual' : 'Real'
       });
 
       // Retornar informações da nova conta
       res.json({
         success: true,
-        message: `Conta alterada para ${is_virtual ? 'Virtual' : 'Real'} com sucesso`,
+        message: `Conta alterada para ${switchResult.is_virtual ? 'Virtual' : 'Real'} com sucesso`,
         accountInfo: {
           account: {
             id: switchResult.loginid,
-            balance: 0, // Saldo será obtido via WebSocket em tempo real
+            balance: switchResult.balance || 0,
             currency: switchResult.currency,
             is_virtual: switchResult.is_virtual,
             fullname: switchResult.fullname,
             email: switchResult.email
           },
-          available_accounts: (switchResult.available_accounts || []).map(acc => ({
+          available_accounts: storedAccounts.map(acc => ({
             loginid: acc.loginid,
             currency: acc.currency,
             is_virtual: acc.is_virtual

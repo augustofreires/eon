@@ -70,10 +70,9 @@ router.get('/', authenticateToken, async (req, res) => {
       `);
     }
 
-    res.json({
-      bots: result.rows,
-      total: result.rows.length
-    });
+    // CORREÇÃO: Frontend espera array direto, não objeto
+    console.log(`✅ Retornando ${result.rows.length} bots disponíveis`);
+    res.json(result.rows);
 
   } catch (error) {
     console.error('Erro ao listar bots:', error);
