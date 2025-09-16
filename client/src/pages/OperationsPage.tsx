@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -49,6 +49,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import DerivAccountPanel from '../components/DerivAccountPanel';
 
 interface Bot {
   id: number;
@@ -67,10 +68,18 @@ interface ChartData {
 
 const OperationsPage: React.FC = () => {
   const { t } = useLanguage();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, availableAccounts, currentAccount, fetchAccounts, switchAccount } = useAuth();
   const [derivConnected, setDerivConnected] = useState(false);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
+  
+  // Garantir que availableBots seja sempre um array
+  React.useEffect(() => {
+    if (!Array.isArray(availableBots)) {
+      console.warn('⚠️ availableBots não é um array, corrigindo...', availableBots);
+      setAvailableBots([]);
+    }
+  }, [availableBots]);
   const [operationRunning, setOperationRunning] = useState(false);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [wsConnection, setWsConnection] = useState<WebSocket | null>(null);
@@ -95,17 +104,21 @@ const OperationsPage: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const loadAvailableBots = async () => {
+  const loadAvailableBots = useCallback(async () => {
     try {
       const response = await axios.get('/api/bots');
-      setAvailableBots(response.data);
-      console.log('Bots carregados:', response.data);
+      // Garantir que sempre seja um array
+      const botsData = Array.isArray(response.data) ? response.data : [];
+      setAvailableBots(botsData);
+      console.log('Bots carregados:', botsData);
     } catch (error) {
       console.error('Erro ao carregar bots:', error);
+      // Em caso de erro, definir como array vazio
+      setAvailableBots([]);
     }
-  };
+  }, []);
 
-  const loadDerivConfig = async () => {
+  const loadDerivConfig = useCallback(async () => {
     try {
       const response = await axios.get('/api/auth/deriv-affiliate-link');
       setDerivAffiliateLink(response.data.affiliate_link);
@@ -113,7 +126,92 @@ const OperationsPage: React.FC = () => {
     } catch (error) {
       console.error('Erro ao carregar link Deriv:', error);
     }
-  };
+  }, []);
+
+  // Função para processar callback OAuth diretamente na URL
+  const processOAuthCallback = useCallback(async (token: string, accountId: string, state: string | null) => {
+    try {
+      console.log('🔄 Processando OAuth callback direto da URL...');
+
+      // Verificar se já foi processado recentemente (evitar duplicatas)
+      const lastProcessed = localStorage.getItem('oauth_last_processed');
+      const currentTime = Date.now();
+      if (lastProcessed && (currentTime - parseInt(lastProcessed)) < 5000) { // 5 segundos
+        console.log('⏭️ OAuth já foi processado recentemente, pulando...');
+        return;
+      }
+
+      // Marcar como processado
+      localStorage.setItem('oauth_last_processed', currentTime.toString());
+
+      // Verificar state se disponível
+      if (state) {
+        console.log('🔍 Validando state parameter...');
+      }
+
+      // Enviar tokens para o backend processar
+      const response = await axios.post('/api/auth/deriv/process-callback', {
+        token1: token,
+        acct1: accountId,
+        state: state
+      });
+
+      if (response.data.success) {
+        console.log('✅ OAuth processado com sucesso:', response.data);
+        setDerivConnected(true);
+
+        // Salvar no localStorage
+        localStorage.setItem('deriv_connected', 'true');
+        localStorage.setItem('deriv_account_data', JSON.stringify({
+          account_id: response.data.account_id,
+          deriv_email: response.data.deriv_email,
+          deriv_currency: response.data.deriv_currency,
+          deriv_is_virtual: response.data.is_virtual,
+          deriv_fullname: response.data.deriv_fullname
+        }));
+
+        // Atualizar contexto de usuário
+        if (user && updateUser) {
+          updateUser({
+            ...user,
+            deriv_connected: true,
+            deriv_account_id: response.data.account_id,
+            deriv_email: response.data.deriv_email,
+            deriv_currency: response.data.deriv_currency,
+            deriv_is_virtual: response.data.is_virtual,
+            deriv_fullname: response.data.deriv_fullname
+          });
+        }
+
+        // NOTIFICATION CONTROL: Only show notification once per session
+        const notificationKey = `deriv_connected_${response.data.account_id}`;
+        const lastNotification = sessionStorage.getItem(notificationKey);
+        if (!lastNotification) {
+          toast.success(`Conta Deriv conectada: ${response.data.account_id} (${response.data.deriv_currency})`);
+          sessionStorage.setItem(notificationKey, currentTime.toString());
+        } else {
+          console.log('🔇 Notificação já exibida nesta sessão, pulando...');
+        }
+
+        // FETCH ACCOUNTS: Load all available accounts after successful connection
+        try {
+          console.log('🔄 Buscando contas disponíveis após conexão OAuth...');
+          await fetchAccounts();
+          console.log('✅ Contas carregadas com sucesso após OAuth');
+        } catch (fetchError) {
+          console.error('⚠️ Erro ao buscar contas após OAuth:', fetchError);
+        }
+      } else {
+        throw new Error(response.data.error || 'Erro ao processar OAuth');
+      }
+
+    } catch (error: any) {
+      console.error('❌ Erro ao processar OAuth callback:', error);
+      // Limpar marcação de processamento em caso de erro
+      localStorage.removeItem('oauth_last_processed');
+      throw error;
+    }
+  }, [user, updateUser]);
 
   const checkDerivConnection = async (silent = false) => {
     try {
@@ -122,12 +220,36 @@ const OperationsPage: React.FC = () => {
       }
       const response = await axios.get('/api/auth/deriv/status');
       const isConnected = response.data.connected;
+
+      // Persistir estado no localStorage
+      if (isConnected) {
+        localStorage.setItem('deriv_connected', 'true');
+        localStorage.setItem('deriv_account_data', JSON.stringify({
+          account_id: response.data.account_id,
+          deriv_email: response.data.deriv_email,
+          deriv_currency: response.data.deriv_currency,
+          deriv_is_virtual: response.data.is_virtual,
+          deriv_fullname: response.data.deriv_fullname
+        }));
+      } else {
+        localStorage.removeItem('deriv_connected');
+        localStorage.removeItem('deriv_account_data');
+      }
+
       setDerivConnected(isConnected);
       if (!silent) {
         console.log('✅ Status Deriv verificado:', {
           connected: isConnected,
           account_id: response.data.account_id,
+          success: response.data.success,
+          raw_deriv_connected: response.data.deriv_connected,
           response: response.data
+        });
+        console.log('🔍 Análise detalhada da conexão:', {
+          'response.data.connected': response.data.connected,
+          'typeof connected': typeof response.data.connected,
+          'Boolean(connected)': Boolean(response.data.connected),
+          'isConnected final': isConnected
         });
       }
       return isConnected;
@@ -135,6 +257,9 @@ const OperationsPage: React.FC = () => {
       if (!silent) {
         console.error('❌ Erro ao verificar status Deriv:', error.response?.data || error.message);
       }
+      // Limpar localStorage em caso de erro
+      localStorage.removeItem('deriv_connected');
+      localStorage.removeItem('deriv_account_data');
       setDerivConnected(false);
       return false;
     }
@@ -197,121 +322,20 @@ const OperationsPage: React.FC = () => {
       const { auth_url } = response.data;
       console.log('✅ URL de autorização obtida:', auth_url);
       
-      // Abrir popup para autorização
-      console.log('🌐 Abrindo popup OAuth...');
-      const popup = window.open(
-        auth_url,
-        'deriv-oauth',
-        'width=600,height=700,scrollbars=yes,resizable=yes'
-      );
-
-      if (!popup) {
-        console.error('❌ Popup foi bloqueado pelo navegador');
-        toast.error('Popup bloqueado. Permita popups para conectar com a Deriv.');
-        return;
-      }
+      // Redirecionar para OAuth na mesma aba (como o concorrente EonPro)
+      console.log('🌐 Redirecionando para OAuth da Deriv...');
+      toast.loading('Redirecionando para login da Deriv...', { duration: 2000 });
       
-      console.log('✅ Popup OAuth aberto com sucesso');
-
-      // Escutar mensagem do popup
-      const handleMessage = async (event: MessageEvent) => {
-        console.log('🔄 PostMessage recebido:', {
-          origin: event.origin,
-          expectedOrigin: window.location.origin,
-          type: event.data?.type,
-          data: event.data
-        });
-        
-        // Aceitar mensagens do próprio site (callback page)
-        const siteUrl = new URL(window.location.origin);
-        const eventUrl = new URL(event.origin);
-        if (eventUrl.hostname !== siteUrl.hostname) {
-          console.log('❌ Origem rejeitada:', event.origin, 'não pertence a', siteUrl.hostname);
-          return;
-        }
-        
-        // Handle OAuth success
-        if (event.data.type === 'deriv_oauth_success') {
-          console.log('✅ Callback OAuth recebido com sucesso, processando...');
-          popup.close();
-          
-          try {
-            const { token, accountId, loginid, is_demo, currency, email, validated } = event.data.data;
-            console.log('📋 Dados OAuth validados recebidos:', { 
-              accountId: loginid, 
-              is_demo, 
-              currency, 
-              email, 
-              validated 
-            });
-            
-            // Verificar se o token foi validado com sucesso
-            if (validated) {
-              toast.success(`Conta Deriv conectada: ${loginid} (${currency})`);
-              
-              // Atualizar estado imediatamente com dados validados
-              setDerivConnected(true);
-              
-              // Atualizar contexto de autenticação com dados completos
-              if (user && updateUser) {
-                updateUser({
-                  ...user,
-                  deriv_connected: true,
-                  deriv_account_id: loginid || accountId,
-                  deriv_email: email,
-                  deriv_currency: currency,
-                  deriv_is_virtual: is_demo
-                });
-                console.log('🔄 Contexto atualizado com dados validados da Deriv');
-              }
-              
-              // Verificar conexão para sincronizar com backend
-              setTimeout(async () => {
-                console.log('🔄 Sincronizando estado com backend...');
-                const isConnected = await checkDerivConnection(true); // silent check
-                if (isConnected) {
-                  console.log('🎉 Estado sincronizado com backend!');
-                }
-              }, 500);
-            } else {
-              toast.error('Token não foi validado pela Deriv API');
-              console.error('❌ Token validation flag is false');
-            }
-            
-          } catch (error: any) {
-            console.error('❌ Erro ao processar dados OAuth:', error);
-            toast.error('Erro ao processar dados OAuth');
-          }
-        }
-        
-        // Handle OAuth error
-        if (event.data.type === 'deriv_oauth_error') {
-          console.error('❌ Erro OAuth recebido:', event.data.error);
-          popup.close();
-          toast.error(event.data.error || 'Erro ao conectar com a Deriv');
-        }
-          
-          window.removeEventListener('message', handleMessage);
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
-
-      // Verificar se popup foi fechado manualmente
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkClosed);
-          window.removeEventListener('message', handleMessage);
-        }
-      }, 1000);
+      // Usar window.location em vez de popup
+      window.location.href = auth_url;
       
     } catch (error: any) {
-      console.error('Erro ao obter URL de autorização:', error);
+      console.error('❌ Erro ao obter URL de autorização:', error);
       toast.error(error.response?.data?.error || 'Erro ao iniciar conexão com a Deriv');
     }
   };
 
-  const connectToDerivWS = async () => {
+  const connectToDerivWS = useCallback(async () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
     
     setIsConnectingWs(true);
@@ -389,13 +413,49 @@ const OperationsPage: React.FC = () => {
       console.error('Erro ao conectar WebSocket:', error);
       setIsConnectingWs(false);
     }
-  };
+  }, [selectedSymbol]);
 
   useEffect(() => {
-    if (isInitialized) return;
-    
-    console.log('🚀 OperationsPage: Inicializando componente...');
-    
+    console.log('🚀 OperationsPage: useEffect executado!', {
+      isInitialized,
+      currentUrl: window.location.href,
+      hasSearchParams: window.location.search.length > 0,
+      timestamp: new Date().toISOString()
+    });
+
+    if (isInitialized) {
+      console.log('⏭️ Componente já inicializado, pulando...');
+      return;
+    }
+
+    console.log('🚀 OperationsPage: Inicializando componente... [NOTIFICATION FIX v1 - ' + Date.now() + ']');
+
+    // Restaurar estado da conexão Deriv do localStorage
+    const savedDerivConnected = localStorage.getItem('deriv_connected');
+    const savedAccountData = localStorage.getItem('deriv_account_data');
+
+    if (savedDerivConnected === 'true' && savedAccountData) {
+      console.log('🔄 Restaurando estado Deriv do localStorage...');
+      setDerivConnected(true);
+
+      try {
+        const accountData = JSON.parse(savedAccountData);
+        if (user && updateUser) {
+          updateUser({
+            ...user,
+            deriv_connected: true,
+            deriv_account_id: accountData.account_id,
+            deriv_email: accountData.deriv_email,
+            deriv_currency: accountData.deriv_currency,
+            deriv_is_virtual: accountData.deriv_is_virtual,
+            deriv_fullname: accountData.deriv_fullname
+          });
+        }
+      } catch (error) {
+        console.error('❌ Erro ao restaurar dados da conta Deriv:', error);
+      }
+    }
+
     // Verificar estado inicial do contexto de autenticação
     if (user?.deriv_connected) {
       console.log('🔗 Usuário já tem Deriv conectado no contexto, sincronizando...');
@@ -405,6 +465,66 @@ const OperationsPage: React.FC = () => {
     // Inicializar dados da página
     const initializeOperationsPage = async () => {
       try {
+        // Verificar se há parâmetros OAuth na URL primeiro
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Debug completo da URL atual
+        console.log('🔍 DEBUG URL atual:', {
+          fullUrl: window.location.href,
+          pathname: window.location.pathname,
+          search: window.location.search,
+          allParams: Object.fromEntries(urlParams.entries())
+        });
+        
+        // Verificar múltiplas contas (como EonPro: acct1, acct2, acct3)
+        const accounts = [];
+        for (let i = 1; i <= 3; i++) {
+          const token = urlParams.get(`token${i}`);
+          const account = urlParams.get(`acct${i}`);
+          const currency = urlParams.get(`cur${i}`);
+          
+          console.log(`🔍 Verificando conta ${i}:`, { token: token ? token.substring(0, 10) + '...' : null, account, currency });
+          
+          if (token && account) {
+            accounts.push({
+              token,
+              account,
+              currency: currency || 'USD',
+              index: i
+            });
+          }
+        }
+        
+        const oauthState = urlParams.get('state');
+        const oauthLang = urlParams.get('lang');
+        
+        if (accounts.length > 0) {
+          console.log('🎉 Parâmetros OAuth detectados na URL!', {
+            totalAccounts: accounts.length,
+            accounts: accounts.map(acc => ({
+              account: acc.account,
+              currency: acc.currency,
+              token: acc.token.substring(0, 10) + '...'
+            })),
+            state: oauthState ? 'presente' : 'ausente',
+            lang: oauthLang
+          });
+          
+          try {
+            // Usar a primeira conta real (não demo) ou a primeira disponível
+            const realAccount = accounts.find(acc => !acc.account.startsWith('VR')) || accounts[0];
+            console.log('🎯 Usando conta:', realAccount.account, `(${realAccount.currency})`);
+            
+            await processOAuthCallback(realAccount.token, realAccount.account, oauthState);
+            
+            // Limpar URL dos parâmetros OAuth
+            window.history.replaceState({}, document.title, '/operations');
+          } catch (oauthError) {
+            console.error('❌ Erro ao processar OAuth callback:', oauthError);
+            toast.error('Erro ao processar autorização da Deriv');
+          }
+        }
+        
         console.log('🔄 Carregando configurações iniciais...');
         await Promise.all([
           loadAvailableBots(),
@@ -440,7 +560,7 @@ const OperationsPage: React.FC = () => {
         clearInterval(statusCheckIntervalRef.current);
       }
     };
-  }, [isInitialized, user]);
+  }, [isInitialized, user, loadAvailableBots, loadDerivConfig, connectToDerivWS, processOAuthCallback]);
 
   // Sincronizar com mudanças no contexto de autenticação
   useEffect(() => {
@@ -452,6 +572,9 @@ const OperationsPage: React.FC = () => {
       setDerivConnected(false);
     }
   }, [user?.deriv_connected, derivConnected]);
+
+  // REMOVED: Duplicate OAuth processing useEffect that was causing notification spam
+  // OAuth processing is now handled only once in the main initialization useEffect
 
   useEffect(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -824,6 +947,16 @@ const OperationsPage: React.FC = () => {
                 </Box>
               ) : !selectedBot ? (
                 <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {/* Painel da Conta Deriv Compacto */}
+                  <DerivAccountPanel 
+                    isConnected={derivConnected}
+                    onRefresh={() => {
+                      checkDerivConnection(false);
+                      loadAvailableBots();
+                    }}
+                    compact={true}
+                  />
+
                   {/* Header de seleção de bot */}
                   <Box sx={{
                     display: 'flex',
@@ -837,13 +970,26 @@ const OperationsPage: React.FC = () => {
                       Selecionar Bot
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', ml: 'auto' }}>
-                      {availableBots.length} disponíveis
+                      {Array.isArray(availableBots) ? availableBots.length : 0} disponíveis
                     </Typography>
                   </Box>
 
                   {/* Lista de bots */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '300px', overflowY: 'auto' }}>
-                    {(availableBots || []).map((bot) => (
+                    {(() => {
+                      console.log('🔍 DEBUG availableBots:', { 
+                        type: typeof availableBots, 
+                        isArray: Array.isArray(availableBots), 
+                        value: availableBots,
+                        length: availableBots?.length 
+                      });
+                      
+                      if (!Array.isArray(availableBots)) {
+                        console.error('❌ ERRO: availableBots não é array!', availableBots);
+                        return null;
+                      }
+                      
+                      return availableBots.map((bot) => (
                       <Box
                         key={bot.id}
                         onClick={() => setSelectedBot(bot)}
@@ -868,10 +1014,11 @@ const OperationsPage: React.FC = () => {
                           {bot.description}
                         </Typography>
                       </Box>
-                    ))}
+                    ));
+                    })()}
                   </Box>
 
-                  {availableBots.length === 0 && (
+                  {(!Array.isArray(availableBots) || availableBots.length === 0) && (
                     <Box sx={{ textAlign: 'center', p: 3, color: 'rgba(255, 255, 255, 0.5)' }}>
                       <SmartToy sx={{ fontSize: 32, mb: 1, opacity: 0.5 }} />
                       <Typography variant="body2">
@@ -936,18 +1083,18 @@ const OperationsPage: React.FC = () => {
                     <Button
                       variant="contained"
                       startIcon={operationRunning ? <CircularProgress size={16} /> : <PlayArrow />}
-                      disabled={operationRunning}
+                      disabled={operationRunning || !derivConnected || !selectedBot}
                       onClick={handleStartOperation}
                       fullWidth
                       sx={{
-                        background: 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
+                        background: (!derivConnected || !selectedBot) ? 'linear-gradient(135deg, #666 0%, #555 100%)' : 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
                         '&:hover': {
-                          background: 'linear-gradient(135deg, #388e3c 0%, #4caf50 100%)'
+                          background: (!derivConnected || !selectedBot) ? 'linear-gradient(135deg, #555 0%, #666 100%)' : 'linear-gradient(135deg, #388e3c 0%, #4caf50 100%)'
                         },
                         py: 1.5
                       }}
                     >
-                      {operationRunning ? 'Operando...' : 'Iniciar Operação'}
+                      {operationRunning ? 'Operando...' : (!derivConnected ? 'Conecte sua conta Deriv' : !selectedBot ? 'Selecione um bot' : 'Iniciar Operação')}
                     </Button>
 
                     {operationRunning && (

@@ -1173,10 +1173,18 @@ router.get('/deriv/account-info', authenticateToken, async (req, res) => {
       let availableAccounts = [];
       try {
         if (user.deriv_accounts_tokens) {
+          console.log('🔍 RAW deriv_accounts_tokens:', user.deriv_accounts_tokens);
           availableAccounts = JSON.parse(user.deriv_accounts_tokens);
+          console.log('📋 PARSED available accounts:', availableAccounts.length, 'contas');
+          availableAccounts.forEach((acc, idx) => {
+            console.log(`   ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency}`);
+          });
+        } else {
+          console.log('❌ deriv_accounts_tokens é NULL/undefined');
         }
       } catch (parseError) {
-        console.log('ℹ️ Não foi possível fazer parse das contas:', parseError);
+        console.log('❌ Erro ao fazer parse das contas:', parseError);
+        console.log('📄 Raw data:', user.deriv_accounts_tokens);
       }
 
       res.json({
@@ -1210,10 +1218,14 @@ router.get('/deriv/account-info', authenticateToken, async (req, res) => {
       let availableAccounts = [];
       try {
         if (user.deriv_accounts_tokens) {
+          console.log('🔍 FALLBACK RAW deriv_accounts_tokens:', user.deriv_accounts_tokens);
           availableAccounts = JSON.parse(user.deriv_accounts_tokens);
+          console.log('📋 FALLBACK PARSED available accounts:', availableAccounts.length, 'contas');
+        } else {
+          console.log('❌ FALLBACK deriv_accounts_tokens é NULL/undefined');
         }
       } catch (parseError) {
-        console.log('ℹ️ Não foi possível fazer parse das contas:', parseError);
+        console.log('❌ FALLBACK Erro ao fazer parse das contas:', parseError);
       }
 
       // Retornar informações básicas se a API falhar
@@ -1600,6 +1612,8 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
     });
   }
 });
+
+// REMOVED: Duplicate route definition that was causing conflicts
 
 // Endpoint para solicitar reset de senha
 router.post('/forgot-password', [
