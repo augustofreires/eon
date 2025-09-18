@@ -33,7 +33,8 @@ import {
   TrendingUp,
   TrendingDown,
   AttachMoney,
-  Speed
+  Speed,
+  Refresh
 } from '@mui/icons-material';
 import {
   LineChart,
@@ -80,6 +81,7 @@ const OperationsPage: React.FC = () => {
   const [derivConnected, setDerivConnected] = useState(false);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
+  const [loadingBots, setLoadingBots] = useState(false);
   
   // Garantir que availableBots seja sempre um array
   React.useEffect(() => {
@@ -109,56 +111,89 @@ const OperationsPage: React.FC = () => {
     restart_on_error: true
   });
   const [isInitialized, setIsInitialized] = useState(false);
-  
+
   const wsRef = useRef<WebSocket | null>(null);
   const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const initializationRef = useRef<boolean>(false); // CORREÇÃO: Controle de inicialização
+  const botsLoadedRef = useRef<boolean>(false); // Prevenir múltiplos carregamentos
 
-  const loadAvailableBots = useCallback(async () => {
+  // SOLUÇÃO 1: Função robusta de carregamento de bots com prevenção de tree-shaking
+  const loadAvailableBots = useCallback(async (forceRefresh = false) => {
     try {
-      console.log('🔄 Carregando bots disponíveis...');
-      const token = localStorage.getItem('token');
+      setLoadingBots(true);
+      console.log('🔄 Iniciando carregamento de bots...');
 
+      const token = localStorage.getItem('token');
       if (!token) {
-        console.error('❌ Token de autenticação não encontrado');
+        console.warn('❌ Token não encontrado para carregar bots');
         setAvailableBots([]);
-        return;
+        return [];
       }
 
-      console.log('🔑 Token encontrado:', token.substring(0, 20) + '...');
+      // Verificar se já temos bots e não é refresh forçado
+      if (!forceRefresh && availableBots.length > 0 && botsLoadedRef.current) {
+        console.log(`⏭️ ${availableBots.length} bots já carregados, pulando...`);
+        return availableBots;
+      }
 
-      // O axios interceptor já adiciona o token, mas vamos garantir
-      const response = await axios.get('/api/bots');
+      // Marcar como iniciado
+      botsLoadedRef.current = true;
 
-      console.log('📡 Resposta da API bots:', response.data);
-
-      // O endpoint /api/bots retorna array direto
-      const botsData = Array.isArray(response.data) ? response.data : [];
-      setAvailableBots(botsData);
-      console.log('✅ Bots carregados:', botsData.length, 'bots disponíveis');
-    } catch (error: any) {
-      console.error('❌ Erro ao carregar bots:', {
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.response?.data?.error || error.message,
-        url: error.config?.url,
-        headers: error.config?.headers
+      console.log('📡 Fazendo requisição para /api/bots...');
+      const response = await axios.get('/api/bots', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        timeout: 10000 // 10 segundos timeout
       });
 
-      if (error.response?.status === 403) {
-        console.error('🚫 Erro 403: Verificar se token JWT é válido e se middleware está correto');
+      console.log('📦 Resposta recebida:', response.data);
+
+      // Backend retorna array direto (verificado em routes/bots.js linha 75)
+      const botsData = Array.isArray(response.data) ? response.data : [];
+      console.log(`✅ ${botsData.length} bots processados:`, botsData);
+
+      setAvailableBots(botsData);
+
+      // Log detalhado para debug em produção
+      console.log('🎯 Estado atualizado - Bots disponíveis:', {
+        total: botsData.length,
+        bots: botsData.map(bot => ({ id: bot.id, name: bot.name }))
+      });
+
+      return botsData;
+    } catch (error: any) {
+      console.error('❌ ERRO ao carregar bots:', {
+        status: error.response?.status,
+        message: error.message,
+        data: error.response?.data
+      });
+
+      // Garantir que sempre temos um array vazio em caso de erro
+      setAvailableBots([]);
+
+      // Mostrar toast de erro apenas se não for erro de autenticação
+      if (error.response?.status !== 401) {
+        toast.error('Erro ao carregar bots disponíveis');
       }
 
-      // Em caso de erro, definir como array vazio
-      setAvailableBots([]);
+      return [];
+    } finally {
+      setLoadingBots(false);
     }
-  }, []);
+  }, [availableBots]);
+
+  // ANTI-TREE-SHAKING: Expor função globalmente para garantir que não seja removida
+  React.useEffect(() => {
+    (window as any).loadAvailableBots = loadAvailableBots;
+    return () => {
+      delete (window as any).loadAvailableBots;
+    };
+  }, [loadAvailableBots]);
 
   const loadDerivConfig = useCallback(async () => {
     try {
       const response = await axios.get('/api/auth/deriv-affiliate-link');
       setDerivAffiliateLink(response.data.affiliate_link);
-      console.log('Link Deriv carregado:', response.data.affiliate_link);
+      // SOLUÇÃO 2: Removido log desnecessário que aparecia no console
     } catch (error) {
       console.error('Erro ao carregar link Deriv:', error);
     }
@@ -510,10 +545,9 @@ const OperationsPage: React.FC = () => {
           setDerivConnected(true);
         }
 
-        // Carregar dados iniciais
-        console.log('🔄 Carregando dados iniciais...');
+        // SOLUÇÃO 3: Carregar dados iniciais (bots são carregados apenas quando Deriv conectar)
+        console.log('🔄 Carregando configurações iniciais...');
         await Promise.all([
-          loadAvailableBots(),
           loadDerivConfig(),
           checkDerivConnection(false)
         ]);
@@ -565,6 +599,34 @@ const OperationsPage: React.FC = () => {
       setDerivConnected(false);
     }
   }, [user?.deriv_connected, derivConnected]);
+
+  // SOLUÇÃO 4: Carregar bots quando Deriv conectar com controle adequado
+  useEffect(() => {
+    if (derivConnected && isInitialized) {
+      console.log('🤖 Deriv conectado e app inicializado! Carregando bots disponíveis...');
+
+      // Usar timeout para garantir que o estado esteja estabilizado
+      const timeoutId = setTimeout(() => {
+        loadAvailableBots(false); // false = não forçar se já tem bots
+      }, 500);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [derivConnected, isInitialized, loadAvailableBots]);
+
+  // SOLUÇÃO 5: Fallback automático - tentar carregar bots a cada 30 segundos se não tiver nenhum
+  useEffect(() => {
+    if (derivConnected && isInitialized && !loadingBots) {
+      const intervalId = setInterval(() => {
+        if (availableBots.length === 0) {
+          console.log('🔄 Fallback: Tentando carregar bots automaticamente...');
+          loadAvailableBots(true);
+        }
+      }, 30000); // 30 segundos
+
+      return () => clearInterval(intervalId);
+    }
+  }, [derivConnected, isInitialized, loadingBots, availableBots.length, loadAvailableBots]);
 
   // Atualizar preço atual quando há dados do WebSocket
   useEffect(() => {
@@ -997,24 +1059,18 @@ const OperationsPage: React.FC = () => {
                 </Box>
               ) : !selectedBot ? (
                 <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {/* Painel da Conta Deriv */}
+                  {/* SOLUÇÃO 7: Painel da Conta Deriv sem chamadas duplicadas */}
                   {useEnhancedComponents ? (
                     <EnhancedDerivAccountPanel
                       isConnected={derivConnected}
-                      onRefresh={() => {
-                        checkDerivConnection(false);
-                        loadAvailableBots();
-                      }}
+                      onRefresh={() => checkDerivConnection(false)}
                       compact={true}
                       showAdvancedStats={true}
                     />
                   ) : (
                     <DerivAccountPanel
                       isConnected={derivConnected}
-                      onRefresh={() => {
-                        checkDerivConnection(false);
-                        loadAvailableBots();
-                      }}
+                      onRefresh={() => checkDerivConnection(false)}
                       compact={true}
                     />
                   )}
@@ -1032,29 +1088,36 @@ const OperationsPage: React.FC = () => {
                       Selecionar Bot
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', ml: 'auto' }}>
-                      {Array.isArray(availableBots) ? availableBots.length : 0} disponíveis
+                      {loadingBots ? 'Carregando...' : `${Array.isArray(availableBots) ? availableBots.length : 0} disponíveis`}
                     </Typography>
+                    <Button
+                      size="small"
+                      onClick={() => loadAvailableBots(true)}
+                      disabled={loadingBots}
+                      sx={{
+                        minWidth: 'auto',
+                        p: 0.5,
+                        color: '#00d4aa',
+                        '&:hover': {
+                          backgroundColor: 'rgba(0, 212, 170, 0.1)'
+                        },
+                        '&:disabled': {
+                          color: 'rgba(0, 212, 170, 0.3)'
+                        }
+                      }}
+                      title="Recarregar bots"
+                    >
+                      {loadingBots ? <CircularProgress size={16} sx={{ color: '#00d4aa' }} /> : <Refresh sx={{ fontSize: 16 }} />}
+                    </Button>
                   </Box>
 
-                  {/* Lista de bots */}
+                  {/* SOLUÇÃO 5: Lista simplificada de bots (padrão EonPro/dsbots) */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '300px', overflowY: 'auto' }}>
-                    {(() => {
-                      console.log('🔍 DEBUG availableBots:', { 
-                        type: typeof availableBots, 
-                        isArray: Array.isArray(availableBots), 
-                        value: availableBots,
-                        length: availableBots?.length 
-                      });
-                      
-                      if (!Array.isArray(availableBots)) {
-                        console.error('❌ ERRO: availableBots não é array!', availableBots);
-                        return null;
-                      }
-                      
-                      return availableBots.map((bot) => (
+                    {Array.isArray(availableBots) && availableBots.map((bot) => (
                       <Box
                         key={bot.id}
                         onClick={() => setSelectedBot(bot)}
+                        className="bot-card"
                         sx={{
                           p: 2,
                           border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -1076,15 +1139,26 @@ const OperationsPage: React.FC = () => {
                           {bot.description}
                         </Typography>
                       </Box>
-                    ));
-                    })()}
+                    ))}
                   </Box>
 
-                  {(!Array.isArray(availableBots) || availableBots.length === 0) && (
+                  {loadingBots && (
+                    <Box sx={{ textAlign: 'center', p: 3 }}>
+                      <CircularProgress sx={{ color: '#00d4aa', mb: 2 }} />
+                      <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                        Carregando bots disponíveis...
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {!loadingBots && (!Array.isArray(availableBots) || availableBots.length === 0) && (
                     <Box sx={{ textAlign: 'center', p: 3, color: 'rgba(255, 255, 255, 0.5)' }}>
                       <SmartToy sx={{ fontSize: 32, mb: 1, opacity: 0.5 }} />
-                      <Typography variant="body2">
+                      <Typography variant="body2" sx={{ mb: 1 }}>
                         Nenhum bot disponível
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)' }}>
+                        Clique no botão de recarregar para tentar novamente
                       </Typography>
                     </Box>
                   )}
