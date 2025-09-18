@@ -50,6 +50,9 @@ import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import DerivAccountPanel from '../components/DerivAccountPanel';
+import EnhancedDerivAccountPanel from '../components/EnhancedDerivAccountPanel';
+import AdvancedTradingPanel from '../components/AdvancedTradingPanel';
+import useDerivOperations from '../hooks/useDerivOperations';
 
 interface Bot {
   id: number;
@@ -69,6 +72,11 @@ interface ChartData {
 const OperationsPage: React.FC = () => {
   const { t } = useLanguage();
   const { user, updateUser, availableAccounts, currentAccount, fetchAccounts, switchAccount } = useAuth();
+  const {
+    isConnected: derivWSConnected,
+    currentPrice: livePrice,
+    subscribeTicks
+  } = useDerivOperations();
   const [derivConnected, setDerivConnected] = useState(false);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
@@ -85,7 +93,8 @@ const OperationsPage: React.FC = () => {
   const [wsConnection, setWsConnection] = useState<WebSocket | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState('R_100');
   const [isConnectingWs, setIsConnectingWs] = useState(false);
-  const [currentPrice, setCurrentPrice] = useState(1154.7);
+  const [currentPrice, setCurrentPrice] = useState(livePrice || 1154.7);
+  const [useEnhancedComponents, setUseEnhancedComponents] = useState(true);
   const [derivAffiliateLink, setDerivAffiliateLink] = useState('');
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [botConfig, setBotConfig] = useState({
@@ -107,13 +116,39 @@ const OperationsPage: React.FC = () => {
 
   const loadAvailableBots = useCallback(async () => {
     try {
+      console.log('🔄 Carregando bots disponíveis...');
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        console.error('❌ Token de autenticação não encontrado');
+        setAvailableBots([]);
+        return;
+      }
+
+      console.log('🔑 Token encontrado:', token.substring(0, 20) + '...');
+
+      // O axios interceptor já adiciona o token, mas vamos garantir
       const response = await axios.get('/api/bots');
-      // Garantir que sempre seja um array
+
+      console.log('📡 Resposta da API bots:', response.data);
+
+      // O endpoint /api/bots retorna array direto
       const botsData = Array.isArray(response.data) ? response.data : [];
       setAvailableBots(botsData);
-      console.log('Bots carregados:', botsData);
-    } catch (error) {
-      console.error('Erro ao carregar bots:', error);
+      console.log('✅ Bots carregados:', botsData.length, 'bots disponíveis');
+    } catch (error: any) {
+      console.error('❌ Erro ao carregar bots:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.response?.data?.error || error.message,
+        url: error.config?.url,
+        headers: error.config?.headers
+      });
+
+      if (error.response?.status === 403) {
+        console.error('🚫 Erro 403: Verificar se token JWT é válido e se middleware está correto');
+      }
+
       // Em caso de erro, definir como array vazio
       setAvailableBots([]);
     }
@@ -197,14 +232,9 @@ const OperationsPage: React.FC = () => {
           console.log('🔇 Notificação já exibida ou OAuth já processado, pulando...');
         }
 
-        // FETCH ACCOUNTS: Load all available accounts after successful connection
-        try {
-          console.log('🔄 Buscando contas disponíveis após conexão OAuth...');
-          await fetchAccounts('oauth-callback');
-          console.log('✅ Contas carregadas com sucesso após OAuth');
-        } catch (fetchError) {
-          console.error('⚠️ Erro ao buscar contas após OAuth:', fetchError);
-        }
+        // CORREÇÃO: Não chamar fetchAccounts aqui pois o AuthContext já gerencia as contas
+        // e o DerivAccountPanel vai carregá-las quando necessário
+        console.log('ℹ️ OAuth processado, contas serão carregadas automaticamente pelo AuthContext');
       } else {
         throw new Error(response.data.error || 'Erro ao processar OAuth');
       }
@@ -536,6 +566,20 @@ const OperationsPage: React.FC = () => {
     }
   }, [user?.deriv_connected, derivConnected]);
 
+  // Atualizar preço atual quando há dados do WebSocket
+  useEffect(() => {
+    if (livePrice > 0) {
+      setCurrentPrice(livePrice);
+    }
+  }, [livePrice]);
+
+  // Subscrever aos ticks quando símbolo muda
+  useEffect(() => {
+    if (derivWSConnected && selectedSymbol) {
+      subscribeTicks(selectedSymbol);
+    }
+  }, [derivWSConnected, selectedSymbol, subscribeTicks]);
+
   // REMOVED: Duplicate OAuth processing useEffect that was causing notification spam
   // OAuth processing is now handled only once in the main initialization useEffect
 
@@ -560,29 +604,65 @@ const OperationsPage: React.FC = () => {
       minHeight: '100vh',
       background: 'linear-gradient(135deg, rgba(10, 25, 41, 0.95) 0%, rgba(15, 35, 55, 0.9) 100%)'
     }}>
-      {/* Header de teste */}
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'center',
+      {/* Header de status aprimorado */}
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
         mb: 2,
         pb: 1,
         borderBottom: '1px solid rgba(0, 212, 170, 0.2)'
       }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: derivConnected ? '#4caf50' : '#f44336'
+            }} />
+            <Typography variant="caption" sx={{
+              color: derivConnected ? '#4caf50' : '#f44336',
+              fontWeight: 600,
+              fontSize: '0.75rem'
+            }}>
+              DERIV {derivConnected ? 'ONLINE' : 'OFFLINE'}
+            </Typography>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: derivWSConnected ? '#00d4aa' : '#ff9800'
+            }} />
+            <Typography variant="caption" sx={{
+              color: derivWSConnected ? '#00d4aa' : '#ff9800',
+              fontWeight: 600,
+              fontSize: '0.75rem'
+            }}>
+              WEBSOCKET {derivWSConnected ? 'CONECTADO' : 'DESCONECTADO'}
+            </Typography>
+          </Box>
+        </Box>
+
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ 
-            width: 6, 
-            height: 6, 
-            borderRadius: '50%',
-            backgroundColor: derivConnected ? '#4caf50' : '#f44336'
-          }} />
-          <Typography variant="caption" sx={{ 
-            color: derivConnected ? '#4caf50' : '#f44336',
-            fontWeight: 500,
-            fontSize: '0.7rem'
-          }}>
-            {derivConnected ? 'ONLINE' : 'OFFLINE'}
+          <Typography variant="caption" sx={{ color: '#b0b0b0' }}>
+            Modo:
           </Typography>
+          <Chip
+            label={useEnhancedComponents ? 'Avançado' : 'Padrão'}
+            size="small"
+            onClick={() => setUseEnhancedComponents(!useEnhancedComponents)}
+            sx={{
+              fontSize: '0.65rem',
+              height: '20px',
+              cursor: 'pointer',
+              bgcolor: useEnhancedComponents ? 'rgba(0, 212, 170, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+              color: useEnhancedComponents ? '#00d4aa' : '#ffffff'
+            }}
+          />
         </Box>
       </Box>
 
@@ -830,18 +910,25 @@ const OperationsPage: React.FC = () => {
         </Box>
 
         {/* Painel lateral direito */}
-        <Box sx={{ 
+        <Box sx={{
           order: { xs: 2, md: 2 },
           width: { xs: '100%', md: '350px' }
         }}>
-          <Card sx={{
-            borderRadius: '12px',
-            background: 'rgba(15, 25, 35, 0.9)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(0, 212, 170, 0.2)',
-            height: '100%'
-          }}>
-            <CardContent sx={{ p: 0, height: '100%' }}>
+          {useEnhancedComponents ? (
+            <AdvancedTradingPanel
+              selectedBot={selectedBot}
+              botConfig={botConfig}
+              onConfigOpen={() => setConfigModalOpen(true)}
+            />
+          ) : (
+            <Card sx={{
+              borderRadius: '12px',
+              background: 'rgba(15, 25, 35, 0.9)',
+              backdropFilter: 'blur(20px)',
+              border: '1px solid rgba(0, 212, 170, 0.2)',
+              height: '100%'
+            }}>
+              <CardContent sx={{ p: 0, height: '100%' }}>
               
 
               {!derivConnected ? (
@@ -910,15 +997,27 @@ const OperationsPage: React.FC = () => {
                 </Box>
               ) : !selectedBot ? (
                 <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {/* Painel da Conta Deriv Compacto */}
-                  <DerivAccountPanel 
-                    isConnected={derivConnected}
-                    onRefresh={() => {
-                      checkDerivConnection(false);
-                      loadAvailableBots();
-                    }}
-                    compact={true}
-                  />
+                  {/* Painel da Conta Deriv */}
+                  {useEnhancedComponents ? (
+                    <EnhancedDerivAccountPanel
+                      isConnected={derivConnected}
+                      onRefresh={() => {
+                        checkDerivConnection(false);
+                        loadAvailableBots();
+                      }}
+                      compact={true}
+                      showAdvancedStats={true}
+                    />
+                  ) : (
+                    <DerivAccountPanel
+                      isConnected={derivConnected}
+                      onRefresh={() => {
+                        checkDerivConnection(false);
+                        loadAvailableBots();
+                      }}
+                      compact={true}
+                    />
+                  )}
 
                   {/* Header de seleção de bot */}
                   <Box sx={{
@@ -1081,9 +1180,10 @@ const OperationsPage: React.FC = () => {
                   </Box>
                 </Box>
               )}
-              
+
             </CardContent>
           </Card>
+          )}
         </Box>
       </Box>
 
