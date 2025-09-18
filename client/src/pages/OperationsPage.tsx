@@ -83,11 +83,16 @@ const OperationsPage: React.FC = () => {
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
   const [loadingBots, setLoadingBots] = useState(false);
   
-  // Garantir que availableBots seja sempre um array
+  // Garantir que availableBots seja sempre um array e resetar flag se vazio
   React.useEffect(() => {
     if (!Array.isArray(availableBots)) {
       console.warn('⚠️ availableBots não é um array, corrigindo...', availableBots);
       setAvailableBots([]);
+      botsLoadedRef.current = false;
+    } else if (availableBots.length === 0 && botsLoadedRef.current) {
+      // Reset flag se bots foram limpos
+      console.log('🔄 Bots foram limpos, resetando flag de carregamento');
+      botsLoadedRef.current = false;
     }
   }, [availableBots]);
   const [operationRunning, setOperationRunning] = useState(false);
@@ -131,13 +136,11 @@ const OperationsPage: React.FC = () => {
       }
 
       // Verificar se já temos bots e não é refresh forçado
-      if (!forceRefresh && availableBots.length > 0 && botsLoadedRef.current) {
+      if (!forceRefresh && botsLoadedRef.current && availableBots.length > 0) {
         console.log(`⏭️ ${availableBots.length} bots já carregados, pulando...`);
+        setLoadingBots(false);
         return availableBots;
       }
-
-      // Marcar como iniciado
-      botsLoadedRef.current = true;
 
       console.log('📡 Fazendo requisição para /api/bots...');
       const response = await axios.get('/api/bots', {
@@ -152,6 +155,9 @@ const OperationsPage: React.FC = () => {
       console.log(`✅ ${botsData.length} bots processados:`, botsData);
 
       setAvailableBots(botsData);
+
+      // Marcar como carregado apenas após sucesso
+      botsLoadedRef.current = true;
 
       // Log detalhado para debug em produção
       console.log('🎯 Estado atualizado - Bots disponíveis:', {
@@ -170,6 +176,9 @@ const OperationsPage: React.FC = () => {
       // Garantir que sempre temos um array vazio em caso de erro
       setAvailableBots([]);
 
+      // Reset flag para permitir retry
+      botsLoadedRef.current = false;
+
       // Mostrar toast de erro apenas se não for erro de autenticação
       if (error.response?.status !== 401) {
         toast.error('Erro ao carregar bots disponíveis');
@@ -179,15 +188,25 @@ const OperationsPage: React.FC = () => {
     } finally {
       setLoadingBots(false);
     }
-  }, [availableBots]);
+  }, []); // CORREÇÃO: Remover availableBots das dependências para evitar loop infinito
 
   // ANTI-TREE-SHAKING: Expor função globalmente para garantir que não seja removida
   React.useEffect(() => {
     (window as any).loadAvailableBots = loadAvailableBots;
+    (window as any).debugBotState = () => {
+      console.log('🔍 DEBUG: Bot State', {
+        availableBots: availableBots.length,
+        loadingBots,
+        botsLoadedRef: botsLoadedRef.current,
+        derivConnected,
+        isInitialized
+      });
+    };
     return () => {
       delete (window as any).loadAvailableBots;
+      delete (window as any).debugBotState;
     };
-  }, [loadAvailableBots]);
+  }, [loadAvailableBots, availableBots.length, loadingBots, derivConnected, isInitialized]);
 
   const loadDerivConfig = useCallback(async () => {
     try {
@@ -602,7 +621,7 @@ const OperationsPage: React.FC = () => {
 
   // SOLUÇÃO 4: Carregar bots quando Deriv conectar com controle adequado
   useEffect(() => {
-    if (derivConnected && isInitialized) {
+    if (derivConnected && isInitialized && !botsLoadedRef.current) {
       console.log('🤖 Deriv conectado e app inicializado! Carregando bots disponíveis...');
 
       // Usar timeout para garantir que o estado esteja estabilizado
@@ -612,13 +631,15 @@ const OperationsPage: React.FC = () => {
 
       return () => clearTimeout(timeoutId);
     }
-  }, [derivConnected, isInitialized, loadAvailableBots]);
+  }, [derivConnected, isInitialized]); // CORREÇÃO: Remover loadAvailableBots das dependências
 
   // SOLUÇÃO 5: Fallback automático - tentar carregar bots a cada 30 segundos se não tiver nenhum
   useEffect(() => {
-    if (derivConnected && isInitialized && !loadingBots) {
+    if (derivConnected && isInitialized && !loadingBots && availableBots.length === 0 && !botsLoadedRef.current) {
+      console.log('🔄 Iniciando fallback: Tentativa automática de carregar bots em 30s...');
+
       const intervalId = setInterval(() => {
-        if (availableBots.length === 0) {
+        if (availableBots.length === 0 && !botsLoadedRef.current) {
           console.log('🔄 Fallback: Tentando carregar bots automaticamente...');
           loadAvailableBots(true);
         }
@@ -626,7 +647,7 @@ const OperationsPage: React.FC = () => {
 
       return () => clearInterval(intervalId);
     }
-  }, [derivConnected, isInitialized, loadingBots, availableBots.length, loadAvailableBots]);
+  }, [derivConnected, isInitialized, loadingBots, availableBots.length]); // CORREÇÃO: Remover loadAvailableBots das dependências
 
   // Atualizar preço atual quando há dados do WebSocket
   useEffect(() => {
