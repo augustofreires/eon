@@ -112,7 +112,7 @@ const OperationsPage: React.FC = () => {
     if (derivConnected && !currentAccount && availableAccounts.length === 0) {
       console.warn('⚠️ PROBLEMA: Deriv conectado mas sem contas disponíveis!');
     }
-  }, [user?.deriv_connected, derivWSConnected, derivConnected, user, currentAccount, availableAccounts, accountData]);
+  }, [user?.deriv_connected, derivWSConnected, derivConnected, user, currentAccount, availableAccounts]);
 
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
