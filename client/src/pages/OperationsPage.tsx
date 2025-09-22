@@ -446,7 +446,7 @@ const OperationsPage: React.FC = () => {
     try {
       setLoadingAccountInfo(true);
       handleAccountMenuClose();
-      await switchAccount(account, true);
+      await switchAccount(account);
       setTimeout(() => {
         loadAccountInfo();
       }, 1500);
