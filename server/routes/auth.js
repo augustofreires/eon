@@ -1135,13 +1135,14 @@ router.post('/deriv/process-callback', authenticateToken, async (req, res) => {
       isDemo: isDemo
     });
 
-    // Validar token com Deriv WebSocket API
+    // Validar token com Deriv WebSocket API e buscar TODAS as contas
     try {
-      console.log('🔄 Validando token via WebSocket API...');
-      
-      const accountData = await validateTokenWithDerivAPI(token1);
-      
-      console.log('✅ Token validado, salvando no banco...');
+      console.log('🔄 Validando token via WebSocket API e buscando todas as contas...');
+
+      const accountData = await validateTokenAndGetAccounts(token1);
+
+      console.log('✅ Token validado, account_list recebida!');
+      console.log(`🎯 CORREÇÃO DERIV: ${accountData.allAccounts?.length || 1} contas encontradas via account_list API`);
       
       // Usar dados validados da API
       const validatedAccountId = accountData.loginid;
@@ -1165,22 +1166,17 @@ router.post('/deriv/process-callback', authenticateToken, async (req, res) => {
         console.log('ℹ️ Colunas já existem:', columnError.message);
       }
 
-      // For process-callback, we only have one token, so store it as single account
-      const accountsTokensJson = JSON.stringify([{
-        token: token1,
-        loginid: validatedAccountId,
-        currency: accountData.currency,
-        is_virtual: validatedIsDemo,
-        email: accountData.email,
-        fullname: accountData.fullname,
-        country: accountData.country
-      }]);
+      // CORREÇÃO CRÍTICA: Usar TODAS as contas da API account_list
+      const allAccountsForStorage = accountData.allAccounts || [accountData];
+      const accountsTokensJson = JSON.stringify(allAccountsForStorage);
 
-      console.log('💾 Conta única preparada para armazenamento (POST):', {
-        loginid: validatedAccountId,
-        currency: accountData.currency,
-        is_virtual: validatedIsDemo
-      });
+      console.log('💾 TODAS as contas preparadas para armazenamento (POST):', allAccountsForStorage.map(acc => ({
+        loginid: acc.loginid,
+        currency: acc.currency,
+        is_virtual: acc.is_virtual
+      })));
+
+      console.log(`🎯 TOTAL DE CONTAS SALVAS: ${allAccountsForStorage.length}`);
 
       const updateResult = await query(`
         UPDATE users
