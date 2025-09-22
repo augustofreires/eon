@@ -1,0 +1,82 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🛑 Parando servidor..."
+send "pm2 stop iaeon-server\r"
+expect "*#*"
+
+puts "🧹 Limpando cache completo..."
+send "rm -rf client/build client/node_modules/.cache client/.cache\r"
+expect "*#*"
+
+puts "📦 Reinstalando dependências..."
+send "cd client\r"
+expect "*#*"
+
+send "npm cache clean --force\r"
+expect "*#*"
+
+send "npm install\r"
+expect {
+    "*added*" {
+        puts "✅ Dependências instaladas"
+    }
+    "*up to date*" {
+        puts "✅ Dependências OK"
+    }
+    timeout {
+        puts "⏰ Instalando..."
+    }
+}
+expect "*#*"
+
+puts "🏗️ Force rebuild completo..."
+send "npm run build\r"
+expect {
+    "*build folder is ready*" {
+        puts "✅ Build concluído!"
+    }
+    "*compiled successfully*" {
+        puts "✅ Build concluído!"
+    }
+    timeout {
+        puts "⏰ Building..."
+    }
+}
+expect "*#*"
+
+puts "🔄 Reiniciando servidor..."
+send "cd /root/eon\r"
+expect "*#*"
+
+send "pm2 start iaeon-server\r"
+expect "*#*"
+
+send "pm2 status\r"
+expect "*#*"
+
+puts ""
+puts "🎉 REBUILD COMPLETO FINALIZADO!"
+puts "================================="
+puts ""
+puts "🧪 TESTE AGORA:"
+puts "   https://iaeon.site/operations"
+puts "   Login: cliente@iaeon.com / 123456"
+puts ""
+puts "✅ DEVE MOSTRAR: 3 bots disponíveis"
+puts "   - Bot Martingale"
+puts "   - Bot Max Take"
+puts "   - cc"
+
+send "exit\r"
+expect eof

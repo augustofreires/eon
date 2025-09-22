@@ -154,6 +154,17 @@ const OperationsPage: React.FC = () => {
   });
   const [isInitialized, setIsInitialized] = useState(false);
 
+  // CRITICAL FIX: Detect OAuth completion and trigger account fetch
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasOAuthParams = urlParams.get('acct1') || urlParams.get('acct2') || urlParams.get('acct3');
+
+    if (hasOAuthParams && user && !user.deriv_connected) {
+      console.log('🔄 OperationsPage: OAuth params detected, forcing account fetch...');
+      fetchAccounts('oauth-callback-detected');
+    }
+  }, [user, fetchAccounts]);
+
   const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const initializationRef = useRef<boolean>(false);
   const botsLoadedRef = useRef<boolean>(false);

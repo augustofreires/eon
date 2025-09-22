@@ -1,0 +1,62 @@
+#!/usr/bin/expect -f
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+expect {
+    "Enter passphrase" { send "\r"; exp_continue }
+    "password:" { send "62uDLW4RJ9ae28EPVfp5yzT##\r"; expect "root@" }
+    "root@" { }
+}
+
+send "cd /root/eon\r"
+expect "root@"
+
+send "echo '🎯 DEPLOY DA CORREÇÃO CRÍTICA - URL OAUTH CALLBACK ==='\\r"
+expect "root@"
+
+send "git pull origin main\r"
+expect "root@"
+
+send "pm2 restart iaeon-server\r"
+expect "root@"
+
+send "sleep 3\r"
+expect "root@"
+
+send "echo ''\r"
+expect "root@"
+
+send "echo '🎉 CORREÇÃO CRÍTICA APLICADA!'\\r"
+expect "root@"
+
+send "echo 'A URL de callback OAuth foi corrigida:'\\r"
+expect "root@"
+
+send "echo 'ANTES: https://iaeon.site/operations'\\r"
+expect "root@"
+
+send "echo 'AGORA: https://iaeon.site/api/auth/deriv/callback'\\r"
+expect "root@"
+
+send "echo ''\\r"
+expect "root@"
+
+send "echo '🧪 TESTE AGORA:'\\r"
+expect "root@"
+
+send "echo '1. Vá para https://iaeon.site/operations'\\r"
+expect "root@"
+
+send "echo '2. Clique \"Conectar com Deriv\" (logout primeiro se necessário)'\\r"
+expect "root@"
+
+send "echo '3. Faça login OAuth com suas múltiplas contas'\\r"
+expect "root@"
+
+send "echo '4. Agora deve capturar TODAS as suas contas!'\\r"
+expect "root@"
+
+send "echo '5. Execute: pm2 logs iaeon-server --lines 20 | grep \"TODOS OS PARAMETROS\"'\\r"
+expect "root@"
+
+send "exit\r"
+expect eof

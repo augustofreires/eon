@@ -1,0 +1,22 @@
+#!/usr/bin/expect -f
+set timeout 20
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "pm2 list\r"
+expect "#"
+
+send "curl -I https://iaeon.site\r"
+expect "#"
+
+send "curl -I http://localhost:5000\r"
+expect "#"
+
+send "pm2 logs iaeon-server --lines 5 --err\r"
+expect "#"
+
+send "exit\r"
+expect eof

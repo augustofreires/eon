@@ -1,0 +1,103 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect "root@"
+
+# Ir para diretorio do projeto
+send "cd /root/eon\r"
+expect "root@"
+
+# Fazer backup do .env atual
+send "cp .env .env.backup\r"
+expect "root@"
+
+# Atualizar DATABASE_URL para eon_platform
+send "sed -i 's/deriv_bots_db/eon_platform/g' .env\r"
+expect "root@"
+
+# Verificar mudança
+send "echo 'Nova configuracao do banco:'\r"
+expect "root@"
+
+send "grep DATABASE_URL .env\r"
+expect "root@"
+
+# Verificar quantos bots existem atualmente
+send "echo 'Bots atuais:'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d eon_platform -c 'SELECT id, name FROM bots;'\r"
+expect "root@"
+
+# Inserir Bot Martingale se não existir
+send "echo 'Inserindo Bot Martingale...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d eon_platform -c \"INSERT INTO bots (name, description, xml_content, is_active) SELECT 'Bot Martingale', 'Bot avançado com estratégia Martingale para operações automatizadas. Aumenta progressivamente o valor das apostas após perdas para recuperar rapidamente.', '<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><xml xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><block type=\\\"trade\\\" id=\\\"1\\\"><field name=\\\"MARKET\\\">synthetic_indices</field><field name=\\\"TRADETYPE\\\">callput</field><field name=\\\"CONTRACT_TYPE\\\">rise_fall</field></block></xml>', true WHERE NOT EXISTS (SELECT 1 FROM bots WHERE name = 'Bot Martingale');\"\r"
+expect "root@"
+
+# Inserir Bot Max Take se não existir
+send "echo 'Inserindo Bot Max Take...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d eon_platform -c \"INSERT INTO bots (name, description, xml_content, is_active) SELECT 'Bot Max Take', 'Bot inteligente com gestão de risco avançada. Utiliza estratégia de take profit máximo para otimizar ganhos e minimizar perdas em operações de trading.', '<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><xml xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><block type=\\\"trade\\\" id=\\\"2\\\"><field name=\\\"MARKET\\\">synthetic_indices</field><field name=\\\"TRADETYPE\\\">callput</field><field name=\\\"CONTRACT_TYPE\\\">higher_lower</field></block></xml>', true WHERE NOT EXISTS (SELECT 1 FROM bots WHERE name = 'Bot Max Take');\"\r"
+expect "root@"
+
+# Inserir Bot cc se não existir
+send "echo 'Inserindo Bot cc...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d eon_platform -c \"INSERT INTO bots (name, description, xml_content, is_active) SELECT 'cc', 'Bot personalizado com algoritmos de análise técnica. Executa operações baseadas em indicadores customizados para maximizar precisão nas entradas.', '<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?><xml xmlns=\\\"http://www.w3.org/1999/xhtml\\\"><block type=\\\"trade\\\" id=\\\"3\\\"><field name=\\\"MARKET\\\">synthetic_indices</field><field name=\\\"TRADETYPE\\\">callput</field><field name=\\\"CONTRACT_TYPE\\\">touch_notouch</field></block></xml>', true WHERE NOT EXISTS (SELECT 1 FROM bots WHERE name = 'cc');\"\r"
+expect "root@"
+
+# Verificar bots inseridos
+send "echo 'Bots inseridos:'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d eon_platform -c 'SELECT id, name, description FROM bots ORDER BY id;'\r"
+expect "root@"
+
+# Reiniciar PM2
+send "echo 'Reiniciando PM2...'\r"
+expect "root@"
+
+send "pm2 restart all\r"
+expect "root@"
+
+# Aguardar restart
+send "sleep 5\r"
+expect "root@"
+
+# Testar API endpoint
+send "echo 'Testando API endpoint...'\r"
+expect "root@"
+
+send "curl -s http://localhost:3000/api/bots 2>/dev/null | jq . 2>/dev/null || curl -s http://localhost:3000/api/bots\r"
+expect "root@"
+
+# Status do PM2
+send "echo 'Status PM2:'\r"
+expect "root@"
+
+send "pm2 status\r"
+expect "root@"
+
+send "exit\r"
+expect eof

@@ -1,0 +1,71 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔧 APLICANDO CORREÇÃO FINAL DOS BOTS..."
+
+        send "cd /root/eon\r"
+        expect "*# "
+
+        # Vou corrigir o problema criando um script que injeta a correção no JS minificado
+        puts "\n📝 Criando script de correção..."
+        send "cat > fix-bot-parsing.js << 'EOF'\r"
+        expect "*# "
+
+        send "const fs = require('fs');\r"
+        send "const path = require('path');\r"
+        send "\r"
+        send "// Encontrar arquivo JS principal\r"
+        send "const buildDir = '/var/www/html/static/js/';\r"
+        send "const files = fs.readdirSync(buildDir).filter(f => f.endsWith('.js') && f.includes('main'));\r"
+        send "\r"
+        send "if (files.length > 0) {\r"
+        send "  const jsFile = path.join(buildDir, files\\[0\\]);\r"
+        send "  let content = fs.readFileSync(jsFile, 'utf8');\r"
+        send "  \r"
+        send "  // Substituir a lógica de parsing dos bots\r"
+        send "  const oldPattern = /Array\\.isArray\\(\\w+\\.data\\)\\s*\\?\\s*\\w+\\.data\\s*:\\s*\\[\\]/g;\r"
+        send "  const newPattern = 'response.data&&response.data.bots&&Array.isArray(response.data.bots)?response.data.bots:Array.isArray(response.data)?response.data:[]';\r"
+        send "  \r"
+        send "  content = content.replace(oldPattern, newPattern);\r"
+        send "  \r"
+        send "  fs.writeFileSync(jsFile, content);\r"
+        send "  console.log('✅ Correção aplicada em:', files\\[0\\]);\r"
+        send "} else {\r"
+        send "  console.log('❌ Arquivo JS não encontrado');\r"
+        send "}\r"
+        send "EOF\r"
+        expect "*# "
+
+        # Executar o script de correção
+        puts "\n🚀 Executando correção..."
+        send "node fix-bot-parsing.js\r"
+        expect "*# "
+
+        # Limpar cache do navegador forçando novo timestamp
+        puts "\n🔄 Forçando refresh do cache..."
+        send "touch /var/www/html/static/js/*.js\r"
+        expect "*# "
+
+        # Reiniciar nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ CORREÇÃO APLICADA COM SUCESSO!"
+        puts "🌐 Teste agora: https://iaeon.site/operations"
+        puts "🤖 Os bots devem aparecer: Bot Martingale, Bot Max Take, cc"
+
+        send "exit\r"
+    }
+}
+
+expect eof

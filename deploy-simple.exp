@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+puts "🚀 Deploy OAuth Fix - Conectando na VPS..."
+
+spawn ssh -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "*password*" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "*#*"
+
+        puts "✅ Conectado! Executando comandos..."
+
+        # Ir para o diretório
+        send "cd /var/www/iaeon\r"
+        expect "*#*"
+
+        # Verificar se está no lugar certo
+        send "pwd\r"
+        expect "*#*"
+
+        # Fazer backup
+        send "mkdir -p /tmp/backup-oauth-\$(date +%Y%m%d-%H%M%S)\r"
+        expect "*#*"
+
+        # Mostrar instruções para você copiar os arquivos manualmente
+        send "echo '📋 INSTRUÇÕES PARA COPIAR ARQUIVOS:'\r"
+        expect "*#*"
+
+        send "echo '1. Em outra janela do terminal, execute:'\r"
+        expect "*#*"
+
+        send "echo '   scp client/src/contexts/AuthContext.tsx root@31.97.28.231:/var/www/iaeon/client/src/contexts/'\r"
+        expect "*#*"
+
+        send "echo '   scp client/src/components/DerivAccountPanel.tsx root@31.97.28.231:/var/www/iaeon/client/src/components/'\r"
+        expect "*#*"
+
+        send "echo '   scp client/src/pages/OperationsPage.tsx root@31.97.28.231:/var/www/iaeon/client/src/pages/'\r"
+        expect "*#*"
+
+        send "echo '2. Depois que copiar os arquivos, pressione ENTER aqui para continuar...'\r"
+        expect "*#*"
+
+        # Aguardar input do usuário
+        puts "\n⚠️  COPIE OS ARQUIVOS EM OUTRA JANELA DO TERMINAL E DEPOIS PRESSIONE ENTER AQUI"
+        interact
+
+        exit
+    }
+    "*yes/no*" {
+        send "yes\r"
+        exp_continue
+    }
+    timeout {
+        puts "❌ Timeout na conexão"
+        exit 1
+    }
+}

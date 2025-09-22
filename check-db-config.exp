@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*passphrase*" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "=== INVESTIGANDO CONFIGURAÇÃO DO BANCO ==="
+
+        # Verificar configuração do servidor
+        send "cd /root/eon/server\r"
+        expect "*# "
+
+        # Verificar arquivo .env
+        send "cat .env | grep -E '(DB_|DATABASE)'\r"
+        expect "*# "
+
+        # Verificar bancos disponíveis no PostgreSQL
+        send "sudo -u postgres psql -l\r"
+        expect "*# "
+
+        # Verificar se está usando SQLite
+        send "ls -la *.db *.sqlite* 2>/dev/null || echo 'Nenhum arquivo SQLite encontrado'\r"
+        expect "*# "
+
+        # Verificar código de conexão do banco
+        send "grep -n 'database\\|DB_' database/connection.js 2>/dev/null | head -10\r"
+        expect "*# "
+
+        # Verificar configuração no index.js
+        send "grep -n 'database\\|DB_' index.js | head -5\r"
+        expect "*# "
+
+        # Verificar arquivo de configuração do banco
+        send "ls -la database/ 2>/dev/null\r"
+        expect "*# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Timeout na conexão SSH"
+        exit 1
+    }
+}
+
+expect eof

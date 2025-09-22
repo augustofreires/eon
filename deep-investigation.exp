@@ -1,0 +1,73 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔍 INVESTIGAÇÃO PROFUNDA - Procurando TODAS as fontes de notificações..."
+
+# 1. Procurar TODAS as ocorrências de toast.success no projeto
+send "grep -rn 'toast.success.*[Cc]onta.*[Cc]onectada' ./client/src/ || echo 'Nenhuma encontrada'\r"
+expect "*#*"
+
+# 2. Procurar no backend também
+send "grep -rn 'notificação\\|notification\\|toast' ./server/ || echo 'Nenhuma encontrada no server'\r"
+expect "*#*"
+
+# 3. Verificar se há múltiplas chamadas para o endpoint OAuth
+send "grep -rn '/api/auth/deriv' ./client/src/ | head -10\r"
+expect "*#*"
+
+# 4. Verificar se useEffect está sendo chamado múltiplas vezes
+send "grep -rn 'useEffect.*\\[\\]' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+# 5. Procurar por outros padrões que possam causar loops
+send "grep -rn 'processOAuthCallback\\|oauth.*callback' ./client/src/\r"
+expect "*#*"
+
+puts "📋 Verificando se build foi aplicado corretamente..."
+
+# 6. Verificar timestamp do último build
+send "ls -la ./client/build/static/js/ | head -5\r"
+expect "*#*"
+
+# 7. Forçar limpeza do cache do build
+puts "🧹 Limpando cache e rebuild..."
+send "cd client\r"
+expect "*#*"
+
+send "rm -rf build/ node_modules/.cache/\r"
+expect "*#*"
+
+send "npm run build\r"
+expect {
+    "*build folder is ready*" {
+        puts "✅ Rebuild completo"
+    }
+    "*compiled successfully*" {
+        puts "✅ Rebuild completo"
+    }
+    timeout {
+        puts "⏰ Rebuild em andamento..."
+    }
+}
+expect "*#*"
+
+send "cd /root/eon && pm2 restart all\r"
+expect "*#*"
+
+puts ""
+puts "🔍 INVESTIGAÇÃO CONCLUÍDA"
+puts "🧪 Teste novamente: https://iaeon.site/operations"
+puts "💡 Se ainda não funcionar, pode ser problema de cache do navegador"
+
+send "exit\r"
+expect eof

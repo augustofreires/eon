@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+
+spawn ssh root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "root@"
+send "cd /root/eon-pro-trading-bot\r"
+
+expect "root@"
+send "echo '=== Fazendo backup do arquivo atual ==='\r"
+
+expect "root@"
+send "cp client/src/pages/OperationsPage.tsx client/src/pages/OperationsPage.tsx.backup\r"
+
+expect "root@"
+send "echo '=== Baixando arquivo corrigido ==='\r"
+
+expect "root@"
+send "curl -s https://raw.githubusercontent.com/augustodevjs/tradebot/main/client/src/pages/OperationsPage.tsx -o client/src/pages/OperationsPage.tsx\r"
+
+expect "root@"
+send "echo '=== Verificando mudanças ==='\r"
+
+expect "root@"
+send "grep -n 'currentAccount?.loginid' client/src/pages/OperationsPage.tsx | head -3\r"
+
+expect "root@"
+send "echo '=== Rebuilding aplicação ==='\r"
+
+expect "root@"
+send "cd client && npm run build\r"
+
+expect "root@"
+send "echo '=== Reiniciando PM2 ==='\r"
+
+expect "root@"
+send "pm2 restart all\r"
+
+expect "root@"
+send "echo '=== Verificando status ==='\r"
+
+expect "root@"
+send "pm2 status\r"
+
+expect "root@"
+send "echo '=== Deploy concluído! ==='\r"
+
+expect "root@"
+send "exit\r"
+expect eof

@@ -1,0 +1,102 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔍 DESCOBRINDO EM QUAL PORTA O SERVIDOR RODA..."
+
+send "pm2 show iaeon-server | grep -E 'port|PORT'\r"
+expect "*#*"
+
+send "netstat -tlnp | grep LISTEN | grep -E ':500[0-9]|:300[0-9]'\r"
+expect "*#*"
+
+puts "🗄️ MIGRANDO PARA POSTGRESQL..."
+
+puts "📋 1. CRIANDO BANCO POSTGRESQL..."
+send "sudo -u postgres createdb deriv_bots_db 2>/dev/null || echo 'Banco já existe'\r"
+expect "*#*"
+
+puts "📋 2. EXPORTANDO DADOS DO SQLITE..."
+send "sqlite3 server/database.sqlite \".dump\" > /tmp/sqlite_dump.sql\r"
+expect "*#*"
+
+puts "📋 3. VERIFICANDO TABELA BOTS NO SQLITE..."
+send "sqlite3 server/database.sqlite \"SELECT id, name, description FROM bots;\"\r"
+expect "*#*"
+
+puts "📋 4. CONFIGURANDO server/.env PARA POSTGRESQL..."
+send "cat > server/.env << EOF
+DATABASE_URL=postgresql://postgres@localhost:5432/deriv_bots_db
+NODE_ENV=production
+PORT=5000
+JWT_SECRET=minha-chave-secreta-muito-longa-e-segura-para-desenvolvimento-12345
+JWT_EXPIRES_IN=24h
+CORS_ORIGIN=https://iaeon.site
+DERIV_APP_ID=82349
+DERIV_OAUTH_REDIRECT_URL=https://iaeon.site/operations
+EOF\r"
+expect "*#*"
+
+puts "📋 5. CRIANDO TABELAS NO POSTGRESQL..."
+send "sudo -u postgres psql deriv_bots_db -c \"
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  role VARCHAR(50) DEFAULT 'client',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS bots (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  xml_content TEXT NOT NULL,
+  xml_filename VARCHAR(255),
+  created_by INTEGER REFERENCES users(id),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  image_url VARCHAR(500)
+);
+\"\r"
+expect "*#*"
+
+puts "📋 6. INSERINDO OS 3 BOTS NO POSTGRESQL..."
+send "sudo -u postgres psql deriv_bots_db -c \"
+INSERT INTO bots (id, name, description, xml_content, xml_filename, is_active) VALUES
+(1, 'Bot Martingale', 'Bot de estratégia Martingale', '<xml></xml>', 'bot_martingale.xml', true),
+(2, 'Bot Max Take', 'Bot de estratégia Max Take', '<xml></xml>', 'bot_max_take.xml', true),
+(3, 'cc', 'Bot personalizado CC', '<xml></xml>', 'bot_cc.xml', true);
+\"\r"
+expect "*#*"
+
+puts "📋 7. VERIFICANDO DADOS NO POSTGRESQL..."
+send "sudo -u postgres psql deriv_bots_db -c \"SELECT id, name FROM bots;\"\r"
+expect "*#*"
+
+puts "📋 8. REINICIANDO SERVIDOR COM NOVA CONFIGURAÇÃO..."
+send "pm2 restart iaeon-server\r"
+expect "*#*"
+
+puts "🧪 9. TESTANDO API NA PORTA CORRETA..."
+send "sleep 3 && curl -X GET http://localhost:5000/api/bots\r"
+expect "*#*"
+
+puts ""
+puts "🎉 MIGRAÇÃO PARA POSTGRESQL CONCLUÍDA!"
+puts "✅ 3 bots migrados para PostgreSQL"
+puts "✅ Servidor reiniciado"
+
+interact

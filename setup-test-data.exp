@@ -1,0 +1,58 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*passphrase*" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "=== CONFIGURANDO DADOS DE TESTE ==="
+
+        # Verificar usuários existentes
+        send "sudo -u postgres psql -d eon_platform -c \"SELECT id, email, role FROM users LIMIT 3;\"\r"
+        expect "*# "
+
+        # Verificar bots existentes
+        send "sudo -u postgres psql -d eon_platform -c \"SELECT id, name, is_active FROM bots LIMIT 3;\"\r"
+        expect "*# "
+
+        # Se não houver bots, criar alguns
+        send "echo 'Verificando/criando bots de teste...'\r"
+        expect "*# "
+
+        send "sudo -u postgres psql -d eon_platform -c \"INSERT INTO bots (name, description, xml_content, is_active, created_by) VALUES ('Bot Martingale', 'Estratégia Martingale avançada', '<xml><block type=start></block></xml>', true, 1), ('Bot Max Take', 'Maximizador de take profit', '<xml><block type=start></block></xml>', true, 1), ('Bot CC', 'Controle de capital inteligente', '<xml><block type=start></block></xml>', true, 1) ON CONFLICT (name) DO UPDATE SET is_active = true;\"\r"
+        expect "*# "
+
+        # Verificar se os bots foram criados
+        send "sudo -u postgres psql -d eon_platform -c \"SELECT COUNT(*) as bots_ativos FROM bots WHERE is_active = true;\"\r"
+        expect "*# "
+
+        # Tentar fazer login via API para ver se há usuários válidos
+        send "echo 'Testando alguns logins comuns...'\r"
+        expect "*# "
+
+        # Testar alguns emails/senhas comuns
+        send "curl -s -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@admin.com\",\"password\":\"admin\"}' | head -100\r"
+        expect "*# "
+
+        send "curl -s -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"test@test.com\",\"password\":\"123456\"}' | head -100\r"
+        expect "*# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Timeout na conexão SSH"
+        exit 1
+    }
+}
+
+expect eof

@@ -1,0 +1,25 @@
+#!/usr/bin/expect -f
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+# Verificar o novo index.html
+send "curl -s https://iaeon.site/ | grep -o 'main\\.[a-z0-9]*\\.js\\|main\\.[a-z0-9]*\\.css'\r"
+expect "#"
+
+# Testar se os novos recursos estão acessíveis
+send "curl -I https://iaeon.site/static/js/main.7734aff1.js\r"
+expect "#"
+
+send "curl -I https://iaeon.site/static/css/main.4758911f.css\r"
+expect "#"
+
+# Verificar estrutura dos arquivos estáticos
+send "ls -la /var/www/html/static/\r"
+expect "#"
+
+send "exit\r"
+expect eof

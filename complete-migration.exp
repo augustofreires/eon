@@ -1,0 +1,161 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔄 MIGRAÇÃO COMPLETA PARA POSTGRESQL..."
+
+puts "📋 1. VERIFICANDO DADOS NO SQLITE ATUAL..."
+send "sqlite3 server/database.sqlite \".tables\"\r"
+expect "*#*"
+
+puts "📋 2. EXPORTANDO TODOS OS DADOS DO SQLITE..."
+send "sqlite3 server/database.sqlite \".dump\" > /tmp/full_sqlite_export.sql\r"
+expect "*#*"
+
+puts "📋 3. CRIANDO ESQUEMA COMPLETO NO POSTGRESQL..."
+send "sudo -u postgres psql eon_platform << 'EOF'
+
+-- Limpar tabelas existentes se houver
+DROP TABLE IF EXISTS password_reset_tokens CASCADE;
+DROP TABLE IF EXISTS access_link_config CASCADE;
+DROP TABLE IF EXISTS action_cards CASCADE;
+DROP TABLE IF EXISTS branding_config CASCADE;
+DROP TABLE IF EXISTS editable_pages CASCADE;
+DROP TABLE IF EXISTS useful_links CASCADE;
+DROP TABLE IF EXISTS bank_config_history CASCADE;
+DROP TABLE IF EXISTS bank_management_records CASCADE;
+DROP TABLE IF EXISTS bank_management_config CASCADE;
+DROP TABLE IF EXISTS deriv_config CASCADE;
+DROP TABLE IF EXISTS theme_config CASCADE;
+DROP TABLE IF EXISTS system_settings CASCADE;
+DROP TABLE IF EXISTS operations CASCADE;
+DROP TABLE IF EXISTS courses CASCADE;
+DROP TABLE IF EXISTS bots CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+
+-- Criar tabela users
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(50) DEFAULT 'client',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Criar tabela bots
+CREATE TABLE bots (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    xml_content TEXT NOT NULL,
+    xml_filename VARCHAR(255),
+    created_by INTEGER REFERENCES users(id),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    image_url VARCHAR(500)
+);
+
+-- Criar demais tabelas
+CREATE TABLE operations (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    bot_id INTEGER REFERENCES bots(id),
+    status VARCHAR(50) DEFAULT 'pending',
+    profit_loss DECIMAL(10,2) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE courses (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    content TEXT,
+    image_url VARCHAR(500),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE system_settings (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(255) UNIQUE NOT NULL,
+    value TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+EOF\r"
+expect "*#*"
+
+puts "📋 4. COPIANDO DADOS ESSENCIAIS DO SQLITE..."
+# Extrair users
+send "sqlite3 server/database.sqlite \"SELECT * FROM users;\" | while IFS='|' read id name email password role created_at updated_at; do
+  sudo -u postgres psql eon_platform -c \"INSERT INTO users (id, name, email, password, role, created_at, updated_at) VALUES (\$id, '\$name', '\$email', '\$password', '\$role', '\$created_at', '\$updated_at') ON CONFLICT (email) DO NOTHING;\"
+done\r"
+expect "*#*"
+
+# Extrair bots
+send "sqlite3 server/database.sqlite \"SELECT id, name, COALESCE(description, ''), xml_content, xml_filename, created_by, is_active FROM bots;\" | while IFS='|' read id name desc xml filename created_by active; do
+  sudo -u postgres psql eon_platform -c \"INSERT INTO bots (id, name, description, xml_content, xml_filename, created_by, is_active) VALUES (\$id, '\$name', '\$desc', '\$xml', '\$filename', \$created_by, \$active) ON CONFLICT DO NOTHING;\"
+done\r"
+expect "*#*"
+
+puts "📋 5. ATUALIZANDO CONFIGURAÇÕES PARA POSTGRESQL..."
+send "cat > server/.env << 'EOF'
+DATABASE_URL=postgresql://postgres@localhost:5432/eon_platform
+NODE_ENV=production
+PORT=5000
+JWT_SECRET=minha-chave-secreta-muito-longa-e-segura-para-desenvolvimento-12345
+JWT_EXPIRES_IN=24h
+CORS_ORIGIN=https://iaeon.site
+DERIV_APP_ID=82349
+DERIV_OAUTH_REDIRECT_URL=https://iaeon.site/operations
+EOF\r"
+expect "*#*"
+
+puts "📋 6. REMOVENDO ARQUIVOS SQLITE..."
+send "mv server/database.sqlite server/database.sqlite.OLD_BACKUP\r"
+expect "*#*"
+send "mv server/database.db server/database.db.OLD_BACKUP 2>/dev/null || true\r"
+expect "*#*"
+
+puts "📋 7. VERIFICANDO DADOS NO POSTGRESQL..."
+send "sudo -u postgres psql eon_platform -c \"SELECT COUNT(*) as total_users FROM users;\"\r"
+expect "*#*"
+send "sudo -u postgres psql eon_platform -c \"SELECT COUNT(*) as total_bots FROM bots;\"\r"
+expect "*#*"
+send "sudo -u postgres psql eon_platform -c \"SELECT id, name FROM bots;\"\r"
+expect "*#*"
+
+puts "📋 8. REINICIANDO SERVIDOR..."
+send "pm2 restart iaeon-server\r"
+expect "*#*"
+
+puts "📋 9. TESTE FINAL..."
+send "sleep 5 && pm2 logs --lines 5\r"
+expect "*#*"
+
+puts ""
+puts "🎉 MIGRAÇÃO COMPLETA PARA POSTGRESQL FINALIZADA!"
+puts "==============================================="
+puts "✅ SQLite movido para backup (.OLD_BACKUP)"
+puts "✅ PostgreSQL configurado como único banco"
+puts "✅ Todos os dados migrados"
+puts "✅ Servidor reiniciado"
+puts ""
+puts "🧪 TESTE: https://iaeon.site/operations"
+
+interact

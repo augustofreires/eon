@@ -1,0 +1,35 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔄 REINICIANDO SERVIDOR E TESTANDO..."
+
+send "pm2 restart iaeon-server\r"
+expect "*#*"
+
+send "sleep 5\r"
+expect "*#*"
+
+send "pm2 status\r"
+expect "*#*"
+
+puts "🧪 TESTANDO LOGIN..."
+send "curl -s -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}'\r"
+expect "*#*"
+
+puts ""
+puts "✅ TESTE CONCLUÍDO!"
+puts "🧪 AGORA TESTE NO BROWSER: https://iaeon.site/operations"
+puts "📧 Email: cliente@iaeon.com"
+puts "🔑 Senha: 123456"
+
+interact

@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔧 CORRIGINDO DATABASE eon_platform..."
+
+        # Ver estrutura da tabela bots
+        puts "\n1️⃣ ESTRUTURA DA TABELA BOTS:"
+        send "su - postgres -c \"psql eon_platform -c '\\\\d bots'\"\r"
+        expect "*# "
+
+        # Inserir bots na database correta com estrutura certa
+        puts "\n2️⃣ INSERINDO BOTS:"
+        send "su - postgres -c \"psql eon_platform -c \\\"INSERT INTO bots (name, status, file_path, created_at) VALUES ('Bot Martingale', 'active', '/bots/martingale.xml', NOW()), ('Bot Max Take', 'active', '/bots/max_take.xml', NOW()), ('Bot CC', 'active', '/bots/cc.xml', NOW()) ON CONFLICT (name) DO NOTHING;\\\"\"\r"
+        expect "*# "
+
+        # Verificar se os bots foram inseridos
+        puts "\n3️⃣ VERIFICANDO BOTS:"
+        send "su - postgres -c \"psql eon_platform -c 'SELECT id, name, status FROM bots;'\"\r"
+        expect "*# "
+
+        # Verificar usuários para fazer login
+        puts "\n4️⃣ VERIFICANDO USUÁRIOS:"
+        send "su - postgres -c \"psql eon_platform -c 'SELECT id, email FROM users LIMIT 3;'\"\r"
+        expect "*# "
+
+        puts "\n✅ CORREÇÃO FINAL COMPLETA"
+        send "exit\r"
+    }
+}
+
+expect eof

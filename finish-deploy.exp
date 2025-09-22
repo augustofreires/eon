@@ -1,0 +1,35 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔄 Reiniciando PM2..."
+send "pm2 restart all\r"
+expect "*#*"
+
+puts "📊 Status PM2..."
+send "pm2 status\r"
+expect "*#*"
+
+puts "🎉 DEPLOY OAUTH CONCLUÍDO!"
+puts "============================"
+puts "🧪 TESTE AGORA:"
+puts "   URL: https://iaeon.site/operations"
+puts "   Login: cliente@iaeon.com"
+puts "   Senha: 123456"
+puts ""
+puts "✅ RESULTADO ESPERADO:"
+puts "   • Apenas 1 notificação"
+puts "   • 3 contas no dropdown"
+puts "   • Bots carregam normalmente"
+
+send "exit\r"
+expect eof

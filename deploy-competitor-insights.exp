@@ -1,0 +1,44 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 DEPLOY FINAL COM INSIGHTS DO CONCORRENTE..."
+
+        # Copiar novo build
+        send "cd /root/eon/client && cp -r build/* /var/www/html/\r"
+        expect "*# "
+
+        # Verificar novo arquivo
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Reiniciar nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ DEPLOY CONCLUÍDO COM TODAS AS CORREÇÕES!"
+        puts "🌐 Teste: https://iaeon.site/operations"
+        puts ""
+        puts "🎯 CORREÇÕES APLICADAS:"
+        puts "   ✓ Estrutura de dados dos bots corrigida (.bots array)"
+        puts "   ✓ Headers de Authorization explícitos"
+        puts "   ✓ Logs detalhados para debugging"
+        puts "   ✓ Padrões do concorrente implementados"
+        puts "   ✓ Validação robusta de Array.isArray + length > 0"
+        puts ""
+        puts "🤖 AGORA OS BOTS DEVEM APARECER CORRETAMENTE!"
+
+        send "exit\r"
+    }
+}
+
+expect eof

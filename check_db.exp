@@ -1,0 +1,52 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect "root@"
+
+# Verificar quais bancos existem
+send "echo '📊 Verificando bancos de dados existentes...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -l\r"
+expect "root@"
+
+# Verificar arquivo .env para ver qual banco está configurado
+send "echo '📋 Verificando configuração do banco no .env...'\r"
+expect "root@"
+
+send "cd /root/eon && cat .env | grep DATABASE\r"
+expect "root@"
+
+# Verificar se PostgreSQL está rodando
+send "echo '🔧 Status do PostgreSQL...'\r"
+expect "root@"
+
+send "systemctl status postgresql\r"
+expect "root@"
+
+# Verificar se existe banco padrão postgres
+send "echo '📊 Tentando conectar no banco postgres...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d postgres -c '\\l'\r"
+expect "root@"
+
+send "exit\r"
+expect eof

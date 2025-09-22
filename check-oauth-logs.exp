@@ -1,0 +1,32 @@
+#!/usr/bin/expect -f
+set timeout 20
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+expect {
+    "Enter passphrase" { send "\r"; exp_continue }
+    "password:" { send "62uDLW4RJ9ae28EPVfp5yzT##\r"; expect "root@" }
+    "root@" { }
+}
+
+send "cd /root/eon\r"
+expect "root@"
+
+send "echo '=== VERIFICANDO SE OAUTH CALLBACK ESTA SENDO EXECUTADO ==='\\r"
+expect "root@"
+
+send "pm2 logs iaeon-server --lines 50 | grep -A5 -B5 'callback OAuth\\|TODOS OS PARAMETROS\\|Processando callback'\r"
+expect "root@"
+
+send "echo '=== VERIFICANDO LOGS MAIS RECENTES ==='\\r"
+expect "root@"
+
+send "tail -30 /root/.pm2/logs/iaeon-server-out.log\r"
+expect "root@"
+
+send "echo '=== VERIFICANDO SE A URL OAUTH ESTA CORRETA ==='\\r"
+expect "root@"
+
+send "grep -n 'redirectUri.*callback' server/routes/auth.js\r"
+expect "root@"
+
+send "exit\r"
+expect eof

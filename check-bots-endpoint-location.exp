@@ -1,0 +1,25 @@
+#!/usr/bin/expect -f
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "cd /root/eon/server\r"
+expect "#"
+
+# Verificar arquivo bots.js
+send "cat routes/bots.js | head -20\r"
+expect "#"
+
+# Verificar se o app.js registra a rota
+send "grep -n \"/api/bots\" app.js index.js server.js 2>/dev/null || echo 'Rota bots nao encontrada'\r"
+expect "#"
+
+# Verificar todas as rotas registradas
+send "grep -n \"app.use\" app.js index.js server.js 2>/dev/null | grep -E \"(bots|routes)\"\r"
+expect "#"
+
+send "exit\r"
+expect eof

@@ -1,0 +1,54 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🤖 INVESTIGANDO PROBLEMA DOS BOTS NÃO CARREGAREM..."
+
+# 1. Verificar se há bots no banco de dados
+puts "📊 Verificando dados dos bots no banco..."
+send "find . -name '*.db' -o -name '*.sqlite' | head -3\r"
+expect "*#*"
+
+# 2. Procurar endpoints de bots no backend
+puts "🔍 Procurando endpoints de bots no backend..."
+send "grep -rn '/api.*bot' ./server/ | head -5\r"
+expect "*#*"
+
+# 3. Verificar se há alguma rota para bots
+send "grep -rn 'router.*bot\\|bot.*router' ./server/ | head -5\r"
+expect "*#*"
+
+# 4. Procurar por arquivos relacionados a bots
+send "find ./server -name '*bot*' -type f\r"
+expect "*#*"
+
+# 5. Verificar se há dados de exemplo ou seed
+send "grep -rn 'bot' ./server/ | grep -i 'insert\\|create\\|seed' | head -3\r"
+expect "*#*"
+
+# 6. Verificar logs do PM2 para erros
+puts "📋 Verificando logs do servidor..."
+send "pm2 logs --lines 10\r"
+expect "*#*"
+
+# 7. Verificar como o frontend está tentando carregar os bots
+puts "🔍 Verificando frontend - como carrega os bots..."
+send "grep -rn 'loadAvailableBots\\|available.*bot' ./client/src/ | head -5\r"
+expect "*#*"
+
+# 8. Verificar se há algum endpoint específico para bots
+send "grep -rn '/api.*bot' ./client/src/ | head -5\r"
+expect "*#*"
+
+puts "📋 Investigação inicial concluída."
+
+interact

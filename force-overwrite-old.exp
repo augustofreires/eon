@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Upload the debug version with the old filename
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/static/js/main.9ee6e54e.js" root@31.97.28.231:/tmp/main_debug.js
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+# SSH and replace
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "echo 'FORCE OVERWRITING OLD FILE WITH DEBUG VERSION...'\\r"
+expect "#"
+
+send "cp /tmp/main_debug.js /var/www/html/static/js/main.9ee6e54e.js\\r"
+expect "#"
+
+send "systemctl reload nginx\\r"
+expect "#"
+
+send "echo 'DEBUG VERSION INSTALLED AS OLD FILENAME!'\\r"
+send "echo 'Browser should now load debug version automatically'\\r"
+
+send "exit\\r"
+expect eof

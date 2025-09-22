@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        expect {
+            "password:" {
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+            "Enter passphrase for key" {
+                send "\r"
+                expect "password:"
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+        }
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+
+# Check current Nginx config
+send "cat /etc/nginx/sites-available/iaeon.site | grep -A 3 -B 1 proxy_pass\r"
+expect "# "
+
+# Check what process is using port 5000
+send "lsof -i :5000\r"
+expect "# "
+
+# Check recent nginx error logs
+send "tail -n 5 /var/log/nginx/error.log\r"
+expect "# "
+
+# Check if we can connect directly to the backend from server
+send "curl -v http://127.0.0.1:5000/api/health 2>&1 | head -20\r"
+expect "# "
+
+# Try curl with localhost instead of 127.0.0.1
+send "curl -v http://localhost:5000/api/health 2>&1 | head -20\r"
+expect "# "
+
+# Check nginx configuration syntax again
+send "nginx -T 2>&1 | grep -A 10 -B 5 'proxy_pass.*5000'\r"
+expect "# "
+
+send "exit\r"
+expect eof

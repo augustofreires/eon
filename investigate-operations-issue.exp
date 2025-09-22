@@ -1,0 +1,27 @@
+#!/usr/bin/expect -f
+
+spawn ssh root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "root@"
+send "cd /root/eon-pro-trading-bot\r"
+
+expect "root@"
+send "ls -la client/src/pages/\r"
+
+expect "root@"
+send "cat client/src/pages/OperationsPage.tsx | head -50\r"
+
+expect "root@"
+send "cat client/src/components/DerivAccountPanel.tsx | head -50\r"
+
+expect "root@"
+send "pm2 status\r"
+
+expect "root@"
+send "pm2 logs server --lines 10\r"
+
+expect "root@"
+send "exit\r"
+expect eof

@@ -1,0 +1,29 @@
+#!/usr/bin/expect -f
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "cd /root/eon\r"
+expect "#"
+
+# Verificar como os bots estão sendo carregados
+send "grep -r \"loadAvailableBots\\|availableBots\" server/routes/ | head -10\r"
+expect "#"
+
+# Verificar se há uma pasta ou sistema de bots
+send "find . -name \"*bot*\" -type f | head -10\r"
+expect "#"
+
+# Verificar se há XMLs de bot na estrutura
+send "find . -name \"*.xml\" | head -10\r"
+expect "#"
+
+# Verificar o endpoint de bots no backend
+send "grep -A 20 -B 5 \"bots\" server/routes/operations.js 2>/dev/null || echo 'Operations route not found'\r"
+expect "#"
+
+send "exit\r"
+expect eof

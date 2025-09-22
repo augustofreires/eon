@@ -1,0 +1,58 @@
+#!/usr/bin/expect -f
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "cd /root/eon/server/routes\r"
+expect "#"
+
+# Criar uma versão temporária sem autenticação para teste
+send "cat >> operations.js << 'END_TEST_ENDPOINT'
+
+// Endpoint TESTE para listar bots (sem autenticação)
+router.get('/bots-test', async (req, res) => {
+  try {
+    console.log('📋 [TESTE] Buscando bots disponíveis...');
+    
+    const result = await query(\`
+      SELECT id, name, description, image_url, is_active, created_at
+      FROM bots 
+      WHERE is_active = true 
+      ORDER BY name ASC
+    \`);
+    
+    console.log(\`✅ [TESTE] \${result.rows.length} bots encontrados\`);
+    
+    res.json({
+      success: true,
+      bots: result.rows,
+      total: result.rows.length,
+      message: 'Endpoint teste funcionando'
+    });
+    
+  } catch (error) {
+    console.error('❌ [TESTE] Erro ao buscar bots:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      success: false,
+      details: error.message
+    });
+  }
+});
+
+END_TEST_ENDPOINT\r"
+expect "#"
+
+# Reiniciar servidor
+send "cd /root/eon && pm2 restart iaeon-server\r"
+expect "#"
+
+# Testar endpoint sem autenticação
+send "sleep 3 && curl https://iaeon.site/api/operations/bots-test\r"
+expect "#"
+
+send "exit\r"
+expect eof

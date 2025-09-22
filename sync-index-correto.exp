@@ -1,0 +1,59 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+# Upload index.html correto
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/index.html" root@31.97.28.231:/tmp/
+
+expect {
+    "*password:" {
+        send "$password\r"
+        expect eof
+    }
+}
+
+# Conectar e aplicar
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔧 SINCRONIZANDO INDEX.HTML CORRETO..."
+
+        # Backup index atual
+        send "cp /var/www/html/index.html /var/www/html/index.html.backup\r"
+        expect "*# "
+
+        # Copiar index correto
+        send "cp /tmp/index.html /var/www/html/\r"
+        expect "*# "
+
+        # Verificar novo index
+        send "grep 'main\\.' /var/www/html/index.html\r"
+        expect "*# "
+
+        # Verificar se arquivo existe
+        send "ls -la /var/www/html/static/js/main.7426e077.js\r"
+        expect "*# "
+
+        # Reload nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        # Testar
+        send "curl -s -I http://localhost/ | head -1\r"
+        expect "*# "
+
+        puts "\n✅ INDEX.HTML SINCRONIZADO!"
+        puts "🌐 TESTE: https://iaeon.site/"
+        puts "Agora deve carregar sem tela preta!"
+
+        send "exit\r"
+    }
+}
+
+expect eof

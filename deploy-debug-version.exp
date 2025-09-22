@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 FAZENDO DEPLOY DA VERSÃO COM DEBUG..."
+
+        # Copiar novo build
+        send "cd /root/eon/client && cp -r build/* /var/www/html/\r"
+        expect "*# "
+
+        # Verificar novo arquivo
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Reiniciar nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ DEPLOY CONCLUÍDO COM LOGS DETALHADOS!"
+        puts "🌐 Teste: https://iaeon.site/operations"
+        puts "🔍 Agora você deve ver logs detalhados no console!"
+
+        send "exit\r"
+    }
+}
+
+expect eof

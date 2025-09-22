@@ -1,0 +1,26 @@
+#!/usr/bin/expect -f
+
+set timeout 20
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        # Ver usuários disponíveis
+        send "su - postgres -c \"psql eon_platform -c 'SELECT id, email FROM users LIMIT 3;'\"\r"
+        expect "*# "
+
+        # Tentar login com admin@admin.com
+        send "curl -s -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@admin.com\",\"password\":\"admin123\"}' | jq\r"
+        expect "*# "
+
+        send "exit\r"
+    }
+}
+
+expect eof

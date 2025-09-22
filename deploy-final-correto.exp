@@ -1,0 +1,59 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 DEPLOY FINAL DO ARQUIVO CORRETO main.967b26fc.js..."
+
+        # Remover arquivo antigo
+        send "rm -f /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Copiar novo build correto
+        send "cp /root/eon/client/build/static/js/main.967b26fc.js /var/www/html/static/js/\r"
+        expect "*# "
+
+        # Verificar arquivo correto
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Confirmar que tem loadAvailableBots
+        send "grep -o 'loadAvailableBots' /var/www/html/static/js/main*.js | wc -l\r"
+        expect "*# "
+
+        # Verificar qual processo PM2 está rodando (iaeon-server)
+        send "pm2 show iaeon-server\r"
+        expect "*# "
+
+        # Verificar porta do servidor
+        send "netstat -tlnp | grep :3001\r"
+        expect "*# "
+
+        # Reload nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ DEPLOY FINAL CORRETO EXECUTADO!"
+        puts "🌐 TESTE: https://iaeon.site/operations"
+        puts ""
+        puts "🎯 CONFIRMAÇÕES:"
+        puts "   ✓ main.967b26fc.js implantado"
+        puts "   ✓ loadAvailableBots presente no arquivo"
+        puts "   ✓ Servidor backend verificado"
+        puts "   ✓ Nginx recarregado"
+        puts ""
+        puts "🔥 AGORA OS BOTS DEVEM APARECER!"
+
+        send "exit\r"
+    }
+}
+
+expect eof

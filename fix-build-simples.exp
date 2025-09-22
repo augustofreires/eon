@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔧 COPIANDO BUILD COMPLETO..."
+
+        # Copiar build completo do local correto
+        send "cp -r /root/eon/client/build/* /var/www/html/\r"
+        expect "*# "
+
+        # Verificar index.html atual
+        send "grep -o 'main\\.[a-f0-9]*\\.js' /var/www/html/index.html\r"
+        expect "*# "
+
+        # Verificar quais arquivos JS existem
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Verificar se CSS foi atualizado
+        send "ls -la /var/www/html/static/css/main*.css\r"
+        expect "*# "
+
+        # Verificar se loadAvailableBots está no arquivo atual
+        send "grep -c 'loadAvailableBots' /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Reload nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        # Testar se carrega agora
+        send "curl -s -o /dev/null -w '%{http_code}' http://localhost/\r"
+        expect "*# "
+
+        puts "\n✅ BUILD COMPLETO COPIADO!"
+        puts "🌐 TESTE AGORA: https://iaeon.site/"
+        puts ""
+        puts "🎯 DEVE FUNCIONAR:"
+        puts "   ✓ index.html e arquivos JS sincronizados"
+        puts "   ✓ Tela não deve mais ficar preta"
+        puts "   ✓ Login deve aparecer normalmente"
+
+        send "exit\r"
+    }
+}
+
+expect eof

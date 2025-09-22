@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "iaeon2024@\r"
+expect "#"
+
+# Verificar status PM2
+send "cd /root/eon && pm2 status\r"
+expect "#"
+
+# Verificar logs recentes
+send "pm2 logs iaeon-server --lines 10\r"
+expect "#"
+
+# Testar a API diretamente
+send "curl -X POST http://localhost:3001/api/login -H \"Content-Type: application/json\" -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\"}'\r"
+expect "#"
+
+# Verificar se o PostgreSQL está rodando
+send "systemctl status postgresql\r"
+expect "#"
+
+# Testar conexão direta com PostgreSQL
+send "sudo -u postgres psql -d eon_platform -c \"SELECT id, email, role FROM users;\"\r"
+expect "#"
+
+send "exit\r"
+expect eof

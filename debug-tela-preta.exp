@@ -1,0 +1,57 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔍 INVESTIGANDO TELA PRETA..."
+
+        # Verificar se index.html existe
+        send "ls -la /var/www/html/index.html\r"
+        expect "*# "
+
+        # Verificar conteúdo do index.html
+        send "head -20 /var/www/html/index.html\r"
+        expect "*# "
+
+        # Verificar se CSS existe
+        send "ls -la /var/www/html/static/css/\r"
+        expect "*# "
+
+        # Verificar estrutura completa
+        send "find /var/www/html -name '*.html' -o -name '*.css' -o -name '*.js' | head -10\r"
+        expect "*# "
+
+        # Verificar configuração nginx
+        send "nginx -t\r"
+        expect "*# "
+
+        # Verificar status nginx
+        send "systemctl status nginx\r"
+        expect "*# "
+
+        # Testar curl direto
+        send "curl -I http://localhost/\r"
+        expect "*# "
+
+        # Verificar logs nginx
+        send "tail -10 /var/log/nginx/error.log\r"
+        expect "*# "
+
+        puts "\n🎯 DIAGNÓSTICO:"
+        puts "1. Se index.html não existe = não foi copiado"
+        puts "2. Se curl dá erro = problema nginx"
+        puts "3. Se existe mas vazio = build incompleto"
+
+        send "exit\r"
+    }
+}
+
+expect eof

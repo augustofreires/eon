@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔧 COPIANDO BUILD COMPLETO..."
+
+        # Backup atual
+        send "cp -r /var/www/html /var/www/html.backup.$(date +%Y%m%d-%H%M%S)\r"
+        expect "*# "
+
+        # Copiar build completo do local correto
+        send "cp -r /root/eon/client/build/* /var/www/html/\r"
+        expect "*# "
+
+        # Verificar index.html atual
+        send "grep -o 'main\\.[a-f0-9]*\\.js' /var/www/html/index.html\r"
+        expect "*# "
+
+        # Verificar quais arquivos JS existem
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Verificar se CSS foi atualizado
+        send "ls -la /var/www/html/static/css/main*.css\r"
+        expect "*# "
+
+        # Testar se carrega agora
+        send "curl -I http://localhost/\r"
+        expect "*# "
+
+        # Reload nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ BUILD COMPLETO COPIADO!"
+        puts "🌐 TESTE: https://iaeon.site/"
+        puts ""
+        puts "🎯 VERIFICAÇÕES:"
+        puts "   ✓ index.html deve apontar para arquivo JS correto"
+        puts "   ✓ Todos os assets devem estar presentes"
+        puts "   ✓ CSS e JS sincronizados"
+
+        send "exit\r"
+    }
+}
+
+expect eof

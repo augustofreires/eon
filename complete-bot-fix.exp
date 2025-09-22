@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+
+set timeout 20
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        # Inserir bots com xml_content
+        send "su - postgres -c \"psql eon_platform -c \\\"INSERT INTO bots (name, description, xml_content, xml_filename, created_by, is_active) VALUES ('Bot Martingale', 'Estratégia Martingale', '<xml>martingale</xml>', 'martingale.xml', 1, true), ('Bot Max Take', 'Take Profit Máximo', '<xml>max_take</xml>', 'max_take.xml', 1, true), ('Bot CC', 'Controle Customizado', '<xml>cc</xml>', 'cc.xml', 1, true) ON CONFLICT (name) DO NOTHING;\\\"\"\r"
+        expect "*# "
+
+        # Verificar bots inseridos
+        send "su - postgres -c \"psql eon_platform -c 'SELECT id, name FROM bots;'\"\r"
+        expect "*# "
+
+        # Testar API com token válido
+        send "TOKEN=\\$(curl -s -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@admin.com\",\"password\":\"admin123\"}' | jq -r '.token') && curl -H \\\"Authorization: Bearer \\$TOKEN\\\" https://iaeon.site/api/bots\r"
+        expect "*# "
+
+        send "exit\r"
+    }
+}
+
+expect eof

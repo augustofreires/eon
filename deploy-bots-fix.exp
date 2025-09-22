@@ -1,0 +1,29 @@
+#!/usr/bin/expect -f
+set timeout 120
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "cd /root/eon/client\r"
+expect "#"
+
+# Fazer build com as correções
+send "npm run build\r"
+expect "#"
+
+# Deploy para o servidor web
+send "cp -r build/* /var/www/html/\r"
+expect "#"
+
+# Verificar se o endpoint /api/bots existe
+send "grep -A 10 \"router.get('/bots'\" ../server/routes/bots.js 2>/dev/null || echo 'Verificando outro arquivo...'\r"
+expect "#"
+
+# Verificar status do PM2
+send "cd /root/eon && pm2 status\r"
+expect "#"
+
+send "exit\r"
+expect eof

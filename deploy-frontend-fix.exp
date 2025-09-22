@@ -1,0 +1,55 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 FAZENDO DEPLOY DO FRONTEND CORRIGIDO..."
+
+        # Navegar para o diretório web
+        send "cd /var/www/html\r"
+        expect "*# "
+
+        # Fazer backup dos arquivos atuais
+        puts "\n📦 Fazendo backup dos arquivos atuais..."
+        send "cp -r static static.backup.$(date +%Y%m%d-%H%M%S)\r"
+        expect "*# "
+
+        # Limpar arquivos antigos do build
+        send "rm -rf static/js/*.js static/css/*.css\r"
+        expect "*# "
+
+        puts "\n📂 Arquivos atuais removidos, aguardando upload..."
+        send "ls -la static/\r"
+        expect "*# "
+
+        puts "\n⚠️  AGORA ENVIE OS ARQUIVOS VIA SCP EM OUTRO TERMINAL:"
+        puts "scp -r client/build/* root@31.97.28.231:/var/www/html/"
+        puts ""
+        puts "Pressione ENTER quando terminar o upload..."
+
+        # Aguardar input do usuário
+        send "read -p 'Pressione ENTER após completar o upload...' && echo 'Upload confirmado'\r"
+        expect "*# "
+
+        # Verificar se os novos arquivos foram enviados
+        puts "\n🔍 Verificando arquivos após upload..."
+        send "ls -la static/js/ | head -5\r"
+        expect "*# "
+
+        send "ls -la static/css/ | head -5\r"
+        expect "*# "
+
+        puts "\n✅ DEPLOY CONCLUÍDO! Teste a aplicação em iaeon.site"
+        send "exit\r"
+    }
+}
+
+expect eof

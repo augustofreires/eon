@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔍 PROCURANDO TODAS AS CHAMADAS DE loadAvailableBots..."
+
+# Encontrar onde a função é chamada
+send "grep -n 'loadAvailableBots()' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🔍 VERIFICANDO O CONTEXTO DA CHAMADA..."
+
+# Ver o contexto em volta da chamada
+send "grep -n -A 10 -B 10 'loadAvailableBots()' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🔍 VERIFICANDO SE HÁ CONDICIONAIS QUE IMPEDEM A EXECUÇÃO..."
+
+# Procurar por ifs que podem impedir a execução
+send "sed -n '425,445p' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🔍 ADICIONANDO ALERT ANTES DA CHAMADA loadAvailableBots..."
+
+# Adicionar alert antes da linha que chama loadAvailableBots
+send "sed -i '434i\\          alert(\"🔥 PRESTES A CHAMAR loadAvailableBots!\");' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+# Verificar se foi adicionado
+send "sed -n '432,438p' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🏗️ BUILD COM ALERT ANTES DA CHAMADA..."
+send "cd client && npm run build\r"
+expect {
+    "*build folder is ready*" {
+        puts "✅ Build OK"
+    }
+    "*compiled successfully*" {
+        puts "✅ Build OK"
+    }
+    timeout {
+        puts "⏰ Building..."
+    }
+}
+expect "*#*"
+
+send "cd /root/eon && pm2 restart all\r"
+expect "*#*"
+
+puts ""
+puts "🔥 AGORA TESTE NOVAMENTE!"
+puts "DEVE APARECER: '🔥 PRESTES A CHAMAR loadAvailableBots!'"
+puts "Se não aparecer, o código nem chega até essa linha!"
+
+interact

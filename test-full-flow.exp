@@ -1,0 +1,84 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*passphrase*" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "=== TESTE COMPLETO DE AUTENTICAÇÃO E BOTS ==="
+
+        # 1. Verificar se há bots no banco de dados
+        send "cd /root/eon/server\r"
+        expect "*# "
+
+        send "echo '=== VERIFICANDO BOTS NO BANCO ==='\r"
+        expect "*# "
+
+        # Conectar ao PostgreSQL e verificar bots
+        send "sudo -u postgres psql -d eon -c \"SELECT id, name, description, is_active FROM bots;\" 2>/dev/null\r"
+        expect {
+            "*rows*" {
+                puts "Bots encontrados no banco!"
+                expect "*# "
+            }
+            "*does not exist*" {
+                puts "Tabela bots não existe!"
+                expect "*# "
+            }
+            "*# " {
+                puts "Conexão ao banco testada"
+            }
+        }
+
+        # 2. Testar login e obter token
+        send "echo '=== TESTANDO LOGIN ==='\r"
+        expect "*# "
+
+        # Fazer login para obter token (assumindo que há um usuário admin)
+        send "curl -s -X POST https://iaeon.site/api/auth/login \\\r"
+        expect "*> "
+        send "  -H \"Content-Type: application/json\" \\\r"
+        expect "*> "
+        send "  -d '{\"email\":\"admin@iaeon.site\",\"password\":\"admin123\",\"isAdmin\":true}'\r"
+        expect "*# "
+
+        # 3. Teste alternativo: verificar estrutura do banco
+        send "echo '=== VERIFICANDO ESTRUTURA DO BANCO ==='\r"
+        expect "*# "
+
+        send "sudo -u postgres psql -d eon -c \"\\\\dt\" 2>/dev/null | grep -E '(bots|users)'\r"
+        expect "*# "
+
+        # 4. Verificar logs do servidor para problemas de DB
+        send "echo '=== VERIFICANDO LOGS PARA PROBLEMAS DE DB ==='\r"
+        expect "*# "
+
+        send "pm2 logs iaeon-server --lines 10 --raw | grep -i error | tail -5\r"
+        expect "*# "
+
+        # 5. Testar endpoint público que não requer auth
+        send "echo '=== TESTANDO ENDPOINT PÚBLICO ==='\r"
+        expect "*# "
+
+        send "curl -s https://iaeon.site/api/auth/status | jq . 2>/dev/null || curl -s https://iaeon.site/api/auth/status\r"
+        expect "*# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Timeout na conexão SSH"
+        exit 1
+    }
+}
+
+expect eof

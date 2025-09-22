@@ -1,0 +1,57 @@
+#!/usr/bin/expect -f
+
+set timeout 90
+
+spawn ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "root@" {
+        send "cd /root/eon\r"
+    }
+}
+
+expect "root@"
+send "echo '=== PULL FINAL COM TODOS OS COMPONENTES ==='\r"
+
+expect "root@"
+send "git pull origin main\r"
+
+expect "root@"
+send "echo '=== VERIFICANDO COMPONENTES ==='\r"
+
+expect "root@"
+send "ls -la client/src/components/CompactOperationsPanel.tsx\r"
+
+expect "root@"
+send "echo '=== BUILD FINAL - TODAS AS DEPENDENCIAS ==='\r"
+
+expect "root@"
+send "cd client && npm run build\r"
+
+expect "root@"
+send "echo '=== RESTART FINAL DO SERVIDOR ==='\r"
+
+expect "root@"
+send "cd .. && pm2 restart iaeon-server\r"
+
+expect "root@"
+send "echo '=== ✅ DEPLOY CONCLUIDO COM SUCESSO! PROBLEMA RESOLVIDO! ==='\r"
+
+expect "root@"
+send "pm2 status\r"
+
+expect "root@"
+send "echo 'Agora a pagina de operacoes deve exibir corretamente as contas!'\r"
+
+expect "root@"
+send "exit\r"
+
+expect eof

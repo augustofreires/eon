@@ -1,0 +1,47 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Upload new JS file
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/static/js/main.55a3966e.js" root@31.97.28.231:/tmp/
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/index.html" root@31.97.28.231:/tmp/
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+# SSH and deploy
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "echo 'DEPLOYING COMPACT OPERATIONS PANEL...'\\r"
+expect "#"
+
+send "rm -f /var/www/html/static/js/main*.js\\r"
+expect "#"
+
+send "cp /tmp/main.55a3966e.js /var/www/html/static/js/\\r"
+expect "#"
+
+send "cp /tmp/index.html /var/www/html/\\r"
+expect "#"
+
+send "systemctl reload nginx\\r"
+expect "#"
+
+send "echo 'COMPACT OPERATIONS PANEL DEPLOYED!'\\r"
+send "echo 'NEW FEATURES:'\\r"
+send "echo '- Unified operations panel (sections 2,3,4 combined)'\\r"
+send "echo '- Smart bot selection with dropdown menu'\\r"
+send "echo '- Compact controls with icon buttons'\\r"
+send "echo '- Real-time results display area'\\r"
+send "echo '- Current price overlay on chart'\\r"
+send "echo 'TEST: https://iaeon.site/operations'\\r"
+
+send "exit\\r"
+expect eof

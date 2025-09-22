@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+# Upload correção crítica
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/index.html" "/Users/augustofreires/Desktop/Bots deriv/client/build/static/js/main.e3ac3193.js" root@31.97.28.231:/tmp/
+
+expect {
+    "*password:" {
+        send "$password\r"
+        expect eof
+    }
+}
+
+# Deploy
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔧 DEPLOY CORREÇÃO CRÍTICA DE PARSING..."
+
+        # Copiar arquivos
+        send "cp /tmp/index.html /var/www/html/ && cp /tmp/main.e3ac3193.js /var/www/html/static/js/\r"
+        expect "*# "
+
+        # Verificar arquivo correto
+        send "grep 'main\\.' /var/www/html/index.html\r"
+        expect "*# "
+
+        # Reload nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ DEPLOY CORREÇÃO CRÍTICA CONCLUÍDO!"
+        puts "🌐 TESTE: https://iaeon.site/operations"
+        puts ""
+        puts "🎯 CORREÇÃO APLICADA:"
+        puts "   ✓ response.data.bots ao invés de response.data"
+        puts "   ✓ Backend: {bots: Array(3)} → Frontend: Array(3)"
+        puts "   ✓ Parsing correto dos 3 bots do backend"
+        puts ""
+        puts "🔥 OS BOTS DEVEM APARECER AGORA!"
+
+        send "exit\r"
+    }
+}
+
+expect eof

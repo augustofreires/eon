@@ -235,6 +235,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setAvailableAccounts(accounts);
           console.log('🔥 DEBUG: availableAccounts definido com', accounts.length, 'contas:', accounts.map((acc: any) => acc.loginid));
 
+          // CRITICAL FIX: Update user connection status when accounts are found
+          if (statusResponse.data.connected && user && !user.deriv_connected) {
+            console.log('🔄 AuthContext: Updating user connection status to true');
+            updateUser({
+              deriv_connected: true,
+              deriv_account_id: statusResponse.data.account_id,
+              deriv_email: statusResponse.data.deriv_email,
+              deriv_currency: statusResponse.data.deriv_currency,
+              deriv_is_virtual: statusResponse.data.is_virtual,
+              deriv_fullname: statusResponse.data.fullname
+            });
+          }
+
           if (!currentAccount) {
             const primaryAccount = accounts.find((acc: any) => !acc.is_virtual) || accounts[0];
             setCurrentAccount(primaryAccount);
@@ -340,6 +353,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     fetchAccounts,
     switchAccount,
   };
+
+  // DEBUG: Expose state to window for debugging
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.authDebug = {
+        user,
+        availableAccounts,
+        currentAccount,
+        loading
+      };
+    }
+  }, [user, availableAccounts, currentAccount, loading]);
 
   return (
     <AuthContext.Provider value={value}>

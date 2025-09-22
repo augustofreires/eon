@@ -1,0 +1,35 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔍 PROCURANDO useEffect QUE DEVERIA EXECUTAR..."
+
+# Procurar useEffect principal
+send "grep -n 'useEffect' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🚨 ADICIONANDO ALERT NO INÍCIO DO useEffect PRINCIPAL..."
+
+# Encontrar useEffect com array vazio e adicionar alert
+send "sed -i '/useEffect(() => {/a\\    alert(\"🟢 useEffect PRINCIPAL INICIADO!\");' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🏗️ BUILD SIMPLES..."
+send "cd client && npm run build && cd /root/eon && pm2 restart all\r"
+expect "*#*"
+
+puts ""
+puts "🔍 AGORA TESTE!"
+puts "SE APARECER '🟢 useEffect PRINCIPAL INICIADO!' = useEffect roda"
+puts "SE NÃO APARECER = useEffect nem executa!"
+
+interact

@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 FAZENDO DEPLOY DO FRONTEND CORRIGIDO..."
+
+        # Navegar para o projeto
+        send "cd /root/eon\r"
+        expect "*# "
+
+        # Fazer build do frontend no servidor
+        puts "\n📦 Fazendo build do frontend no servidor..."
+        send "cd client\r"
+        expect "*# "
+
+        send "npm run build\r"
+        expect {
+            "webpack compiled" {
+                puts "\n✅ Build concluído!"
+            }
+            "Compiled successfully" {
+                puts "\n✅ Build concluído!"
+            }
+            timeout {
+                puts "\n⏳ Build ainda em andamento..."
+            }
+        }
+
+        # Aguardar mais um pouco para garantir que terminou
+        sleep 5
+        send "\r"
+        expect "*# "
+
+        # Copiar arquivos para o diretório web
+        puts "\n📂 Copiando arquivos para /var/www/html..."
+        send "cp -r build/* /var/www/html/\r"
+        expect "*# "
+
+        # Verificar se os arquivos foram copiados
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Reiniciar nginx
+        puts "\n🔄 Reiniciando nginx..."
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ DEPLOY CONCLUÍDO!"
+        puts "🌐 Teste: https://iaeon.site/operations"
+        puts "🤖 Agora os bots devem aparecer corretamente!"
+
+        send "exit\r"
+    }
+}
+
+expect eof

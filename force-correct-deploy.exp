@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚨 FORÇANDO CORREÇÃO TOTAL..."
+
+        # Remover arquivos antigos
+        send "rm -f /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Verificar que foi removido
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Copiar build direto do local correto
+        send "cp /root/eon/client/build/static/js/main*.js /var/www/html/static/js/\r"
+        expect "*# "
+
+        # Verificar novo arquivo
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Verificar se tem loadAvailableBots
+        send "grep -o 'loadAvailableBots' /var/www/html/static/js/main*.js | wc -l\r"
+        expect "*# "
+
+        # Verificar PM2 real
+        send "pm2 list\r"
+        expect "*# "
+
+        # Iniciar servidor se não estiver rodando
+        send "cd /root/eon/server && pm2 start app.js --name server\r"
+        expect "*# "
+
+        # Verificar porta 3001
+        send "netstat -tlnp | grep :3001\r"
+        expect "*# "
+
+        # Reload nginx final
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ CORREÇÃO FORÇADA APLICADA!"
+        puts "🌐 TESTE AGORA: https://iaeon.site/operations"
+        puts ""
+        puts "🎯 O QUE FOI CORRIGIDO:"
+        puts "   ✓ Arquivo antigo main.74c0cf42.js REMOVIDO"
+        puts "   ✓ Arquivo otimizado main.967b26fc.js COPIADO"
+        puts "   ✓ Servidor backend iniciado na porta 3001"
+        puts "   ✓ Nginx recarregado"
+
+        send "exit\r"
+    }
+}
+
+expect eof

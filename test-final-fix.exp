@@ -1,0 +1,48 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        send "cd /root/eon\r"
+        expect "*# "
+
+        # Sair do less/more se ainda estiver aberto
+        send "q\r"
+        expect "*# "
+
+        # Reiniciar servidor
+        puts "\n🔄 Reiniciando servidor..."
+        send "pm2 restart iaeon-server\r"
+        expect "*# "
+
+        sleep 5
+
+        # Testar endpoint affiliate-link
+        puts "\n🧪 Testando endpoint affiliate-link..."
+        send "curl -s -o /dev/null -w '%{http_code}' http://localhost:5000/api/auth/deriv-affiliate-link\r"
+        expect "*# "
+
+        # Testar conteúdo do endpoint
+        puts "\n📄 Conteúdo do endpoint affiliate-link..."
+        send "curl -s http://localhost:5000/api/auth/deriv-affiliate-link\r"
+        expect "*# "
+
+        # Testar endpoint de bots
+        puts "\n🤖 Testando endpoint de bots..."
+        send "curl -s http://localhost:5000/api/bots\r"
+        expect "*# "
+
+        puts "\n✅ TESTES FINALIZADOS!"
+        send "exit\r"
+    }
+}
+
+expect eof

@@ -1,0 +1,52 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Upload new files
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/static/js/main.ee62b782.js" root@31.97.28.231:/tmp/
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/index.html" root@31.97.28.231:/tmp/
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+# SSH and deploy
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "echo '🚀 DEPLOYING TWO-SECTION LAYOUT...'\r"
+expect "#"
+
+send "rm -f /var/www/html/static/js/main*.js\r"
+expect "#"
+
+send "cp /tmp/main.ee62b782.js /var/www/html/static/js/\r"
+expect "#"
+
+send "cp /tmp/index.html /var/www/html/\r"
+expect "#"
+
+send "echo '📊 Verifying deployment:'\r"
+expect "#"
+
+send "ls -la /var/www/html/static/js/main*.js\r"
+expect "#"
+
+send "grep -o 'main\\.[a-zA-Z0-9]*\\.js' /var/www/html/index.html\r"
+expect "#"
+
+send "systemctl reload nginx\r"
+expect "#"
+
+send "echo '✅ TWO-SECTION LAYOUT DEPLOYED!'\r"
+send "echo '📊 GRÁFICO + 🎛️ OPERAÇÕES = 🚀 NEW LAYOUT'\r"
+send "echo '🌐 TEST: https://iaeon.site/operations'\r"
+send "echo '🔑 Login: cliente@iaeon.com / 123456'\r"
+
+send "exit\r"
+expect eof

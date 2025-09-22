@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔍 TESTANDO VALIDAÇÃO DE TOKEN..."
+
+        # Verificar estrutura de resposta da auth
+        puts "\n1️⃣ TESTANDO ENDPOINT AUTH VERIFY:"
+        send "curl -s -H 'Authorization: Bearer invalid-token' https://iaeon.site/api/auth/verify\r"
+        expect "*# "
+
+        # Ver os logs em tempo real do PM2
+        puts "\n2️⃣ LOGS DO SERVIDOR (últimas linhas):"
+        send "pm2 logs iaeon-server --lines 15 --no-stream\r"
+        expect "*# "
+
+        # Testar endpoint bots com um token qualquer
+        puts "\n3️⃣ TESTANDO ENDPOINT BOTS:"
+        send "curl -s -H 'Authorization: Bearer test123' https://iaeon.site/api/bots\r"
+        expect "*# "
+
+        # Verificar estrutura da base de dados de users
+        puts "\n4️⃣ VERIFICANDO ESTRUTURA DE TOKENS NA DB:"
+        send "psql -U eonuser -d eonpro_db -c \"SELECT id, email, created_at FROM users LIMIT 1;\"\r"
+        expect "*# "
+
+        puts "\n✅ DIAGNÓSTICO DE TOKEN COMPLETO"
+        send "exit\r"
+    }
+}
+
+expect eof

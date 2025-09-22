@@ -1,0 +1,42 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔍 DEBUG SIMPLES..."
+
+        # Verificar se debugBotState está no arquivo
+        send "grep -c 'debugBotState' /var/www/html/static/js/main.939f0c07.js\r"
+        expect "*# "
+
+        # Verificar tamanho
+        send "ls -la /var/www/html/static/js/main.939f0c07.js\r"
+        expect "*# "
+
+        # Verificar porta do servidor
+        send "netstat -tlnp | grep :3001\r"
+        expect "*# "
+
+        # Ver se servidor está recebendo requisições
+        send "pm2 logs iaeon-server --lines 3\r"
+        expect "*# "
+
+        puts "\n🎯 PRÓXIMOS PASSOS:"
+        puts "1. Abra https://iaeon.site/operations"
+        puts "2. DevTools (F12) -> Console"
+        puts "3. Digite: window.debugBotState()"
+        puts "4. Me envie o resultado"
+
+        send "exit\r"
+    }
+}
+
+expect eof

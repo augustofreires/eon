@@ -1,0 +1,54 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔍 DESCOBRINDO PORTA DO SERVIDOR..."
+send "pm2 show iaeon-server\r"
+expect "*#*"
+
+puts "🗄️ CONFIGURANDO POSTGRESQL..."
+
+puts "1. Criando banco..."
+send "sudo -u postgres createdb deriv_bots_db\r"
+expect "*#*"
+
+puts "2. Configurando server/.env..."
+send "echo 'DATABASE_URL=postgresql://postgres@localhost:5432/deriv_bots_db' > server/.env\r"
+expect "*#*"
+send "echo 'NODE_ENV=production' >> server/.env\r"
+expect "*#*"
+send "echo 'PORT=5000' >> server/.env\r"
+expect "*#*"
+
+puts "3. Criando tabelas..."
+send "sudo -u postgres psql deriv_bots_db -c 'CREATE TABLE IF NOT EXISTS bots (id SERIAL PRIMARY KEY, name VARCHAR(255), description TEXT, xml_content TEXT, xml_filename VARCHAR(255), is_active BOOLEAN DEFAULT true, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);'\r"
+expect "*#*"
+
+puts "4. Inserindo bots..."
+send "sudo -u postgres psql deriv_bots_db -c \"INSERT INTO bots (name, description, xml_content, xml_filename) VALUES ('Bot Martingale', 'Bot Martingale', '<xml></xml>', 'martingale.xml'), ('Bot Max Take', 'Bot Max Take', '<xml></xml>', 'maxtake.xml'), ('cc', 'Bot CC', '<xml></xml>', 'cc.xml');\"\r"
+expect "*#*"
+
+puts "5. Verificando dados..."
+send "sudo -u postgres psql deriv_bots_db -c 'SELECT id, name FROM bots;'\r"
+expect "*#*"
+
+puts "6. Reiniciando servidor..."
+send "pm2 restart iaeon-server\r"
+expect "*#*"
+
+puts "7. Testando..."
+send "sleep 3 && curl http://localhost:5000/api/bots\r"
+expect "*#*"
+
+puts "MIGRAÇÃO CONCLUÍDA!"
+
+interact

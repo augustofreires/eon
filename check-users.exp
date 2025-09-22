@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*passphrase*" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "=== VERIFICANDO USUÁRIOS E BOTS ==="
+
+        # Verificar usuários
+        send "sudo -u postgres psql -d eon -c \"SELECT id, email, role, status FROM users LIMIT 5;\"\r"
+        expect "*# "
+
+        # Verificar bots
+        send "sudo -u postgres psql -d eon -c \"SELECT id, name, description, is_active FROM bots LIMIT 5;\"\r"
+        expect "*# "
+
+        # Verificar todas as tabelas
+        send "sudo -u postgres psql -d eon -c \"\\\\dt\"\r"
+        expect "*# "
+
+        # Se não houver dados, criar um usuário admin de teste
+        send "echo 'Criando usuário admin de teste...'\r"
+        expect "*# "
+
+        send "sudo -u postgres psql -d eon -c \"INSERT INTO users (email, password, name, role, status) VALUES ('admin@test.com', '\\$2b\\$10\\$K1QZ2rGfJQJLQJQJQJQJQu', 'Admin Test', 'admin', 'active') ON CONFLICT (email) DO NOTHING;\"\r"
+        expect "*# "
+
+        # Criar alguns bots de teste
+        send "echo 'Criando bots de teste...'\r"
+        expect "*# "
+
+        send "sudo -u postgres psql -d eon -c \"INSERT INTO bots (name, description, xml_content, is_active, created_by) VALUES ('Bot Martingale', 'Bot com estratégia Martingale', '<xml><block></block></xml>', true, 1), ('Bot Max Take', 'Bot com take profit máximo', '<xml><block></block></xml>', true, 1), ('Bot CC', 'Bot de controle de capital', '<xml><block></block></xml>', true, 1) ON CONFLICT (name) DO NOTHING;\"\r"
+        expect "*# "
+
+        # Verificar se os dados foram inseridos
+        send "sudo -u postgres psql -d eon -c \"SELECT COUNT(*) as total_users FROM users;\"\r"
+        expect "*# "
+
+        send "sudo -u postgres psql -d eon -c \"SELECT COUNT(*) as total_bots FROM bots WHERE is_active = true;\"\r"
+        expect "*# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Timeout na conexão SSH"
+        exit 1
+    }
+}
+
+expect eof

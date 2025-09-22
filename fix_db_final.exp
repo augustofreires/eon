@@ -1,0 +1,71 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect "root@"
+
+# Verificar .env
+send "cd /root/eon && cat .env | grep DATABASE_URL\r"
+expect "root@"
+
+# Verificar qual banco tem tabela bots
+send "echo 'Verificando eon_platform...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d eon_platform -c '\\d bots' 2>/dev/null || echo 'Tabela nao existe em eon_platform'\r"
+expect "root@"
+
+send "echo 'Verificando deriv_bots_db...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d deriv_bots_db -c '\\d bots' 2>/dev/null || echo 'Tabela nao existe em deriv_bots_db'\r"
+expect "root@"
+
+send "echo 'Verificando derivbots_production...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d derivbots_production -c '\\d bots' 2>/dev/null || echo 'Tabela nao existe em derivbots_production'\r"
+expect "root@"
+
+# Criar database eon_pro se necessário
+send "echo 'Criando banco eon_pro...'\r"
+expect "root@"
+
+send "sudo -u postgres createdb eon_pro 2>/dev/null || echo 'Banco ja existe ou erro'\r"
+expect "root@"
+
+# Executar setup do banco
+send "echo 'Executando setup do banco...'\r"
+expect "root@"
+
+send "cd /root/eon && node server/database/setup.js\r"
+expect "root@"
+
+# Aguardar setup
+sleep 5
+
+# Verificar tabela bots foi criada
+send "echo 'Verificando tabela bots criada...'\r"
+expect "root@"
+
+send "sudo -u postgres psql -d eon_pro -c '\\d bots'\r"
+expect "root@"
+
+send "exit\r"
+expect eof

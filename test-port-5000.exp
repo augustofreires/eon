@@ -1,0 +1,48 @@
+#!/usr/bin/expect -f
+
+set timeout 15
+
+spawn ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "root@" {
+        send "cd /root/eon\r"
+    }
+}
+
+expect "root@"
+send "echo '=== TESTANDO PORTA 5000 ==='\r"
+
+expect "root@"
+send "curl -s http://localhost:5000/api/auth/deriv/status || echo 'Porta 5000 não responde'\r"
+
+expect "root@"
+send "echo '=== VERIFICANDO SE SERVIDOR ESTÁ RODANDO ==='\r"
+
+expect "root@"
+send "lsof -i :5000\r"
+
+expect "root@"
+send "echo '=== TESTANDO HTTPS ==='\r"
+
+expect "root@"
+send "curl -s https://iaeon.site/api/auth/deriv/status || echo 'HTTPS não responde'\r"
+
+expect "root@"
+send "echo '=== VERIFICANDO LOGS DE ERRO ==='\r"
+
+expect "root@"
+send "tail -10 /root/.pm2/logs/iaeon-server-error.log\r"
+
+expect "root@"
+send "exit\r"
+
+expect eof

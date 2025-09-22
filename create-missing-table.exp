@@ -1,0 +1,60 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 Criando tabela deriv_config faltante..."
+
+        send "cd /root/eon\r"
+        expect "*# "
+
+        # Criar a tabela deriv_config que está faltando
+        puts "\n🏗️ Criando tabela deriv_config..."
+        send "sudo -u postgres psql -d eon_platform -c \"CREATE TABLE IF NOT EXISTS deriv_config (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, app_id VARCHAR(255) NOT NULL, api_token TEXT, is_active BOOLEAN DEFAULT true, affiliate_link TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);\"\r"
+        expect "*# "
+
+        # Inserir dados padrão
+        puts "\n📝 Inserindo dados padrão..."
+        send "sudo -u postgres psql -d eon_platform -c \"INSERT INTO deriv_config (user_id, app_id, api_token, is_active, affiliate_link) VALUES (1, '82349', 'default_token', true, 'https://deriv.com/?a=82349') ON CONFLICT DO NOTHING;\"\r"
+        expect "*# "
+
+        # Verificar se a tabela foi criada corretamente
+        puts "\n🔍 Verificando tabela criada..."
+        send "sudo -u postgres psql -d eon_platform -c 'SELECT * FROM deriv_config LIMIT 1;'\r"
+        expect "*# "
+
+        # Reiniciar servidor
+        puts "\n🔄 Reiniciando servidor..."
+        send "pm2 restart iaeon-server\r"
+        expect "*# "
+
+        sleep 5
+
+        # Testar endpoint que estava com erro 500
+        puts "\n🧪 Testando endpoint affiliate-link..."
+        send "curl -s -o /dev/null -w '%{http_code}' http://localhost:5000/api/auth/deriv-affiliate-link\r"
+        expect "*# "
+
+        # Verificar se ainda há erros nos logs
+        puts "\n📋 Verificando logs atuais..."
+        send "pm2 logs iaeon-server --lines 3\r"
+        expect "*# "
+
+        puts "\n✅ TABELA CRIADA E SERVIDOR REINICIADO!"
+        send "exit\r"
+    }
+    timeout {
+        puts "\n❌ Timeout na conexão"
+        exit 1
+    }
+}
+
+expect eof

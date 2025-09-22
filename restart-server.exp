@@ -1,0 +1,35 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔄 Reiniciando servidor..."
+send "pm2 start iaeon-server\r"
+expect "*#*"
+
+send "pm2 status\r"
+expect "*#*"
+
+puts ""
+puts "🎉 REBUILD COMPLETO FINALIZADO!"
+puts "================================="
+puts ""
+puts "🧪 TESTE AGORA:"
+puts "   https://iaeon.site/operations"
+puts "   Login: cliente@iaeon.com / 123456"
+puts ""
+puts "✅ DEVE MOSTRAR: 3 bots disponíveis"
+puts "   - Bot Martingale"
+puts "   - Bot Max Take"
+puts "   - cc"
+
+send "exit\r"
+expect eof

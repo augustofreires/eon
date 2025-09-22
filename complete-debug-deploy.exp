@@ -1,0 +1,37 @@
+#!/usr/bin/expect -f
+
+set timeout 45
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "cd /var/www/html/static/js/\\r"
+expect "#"
+
+send "ls -la main*.js\\r"
+expect "#"
+
+send "rm -f main*.js\\r"
+expect "#"
+
+send "cp /tmp/main.44e0b608.js .\\r"
+expect "#"
+
+send "cd /var/www/html\\r"
+expect "#"
+
+send "cp /tmp/index.html .\\r"
+expect "#"
+
+send "systemctl reload nginx\\r"
+expect "#"
+
+send "echo 'NEW DEBUG VERSION ACTIVE!'\\r"
+send "echo 'Current JS file:'\\r"
+send "ls -la /var/www/html/static/js/main*.js\\r"
+expect "#"
+
+send "exit\\r"
+expect eof

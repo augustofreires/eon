@@ -1,0 +1,60 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "root@" {
+        send "cd /root/eon\r"
+    }
+}
+
+expect "root@"
+send "echo '=== Verificando status atual ==='\r"
+
+expect "root@"
+send "git status\r"
+
+expect "root@"
+send "echo '=== Fazendo pull das mudancas ==='\r"
+
+expect "root@"
+send "git pull origin main\r"
+
+expect "root@"
+send "echo '=== Verificando se mudancas foram aplicadas ==='\r"
+
+expect "root@"
+send "grep -n 'currentAccount?.loginid' client/src/pages/OperationsPage.tsx | head -3\r"
+
+expect "root@"
+send "echo '=== Rebuilding cliente ==='\r"
+
+expect "root@"
+send "cd client && npm run build\r"
+
+expect "root@"
+send "echo '=== Voltando e reiniciando PM2 ==='\r"
+
+expect "root@"
+send "cd .. && pm2 restart iaeon-server\r"
+
+expect "root@"
+send "echo '=== Status final ==='\r"
+
+expect "root@"
+send "pm2 status\r"
+
+expect "root@"
+send "exit\r"
+
+expect eof

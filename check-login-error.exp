@@ -1,0 +1,31 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔍 VERIFICANDO LOGS DE ERRO DO LOGIN..."
+
+send "pm2 logs iaeon-server --lines 10 | grep -i error\r"
+expect "*#*"
+
+puts "🔍 VERIFICANDO HASH DA SENHA NO BANCO..."
+send "sudo -u postgres psql eon_platform -c \"SELECT id, email, substring(password, 1, 20) as password_start FROM users WHERE email = 'cliente@iaeon.com';\"\r"
+expect "*#*"
+
+puts "🧪 TENTANDO LOGIN COM TESTE DIRETO..."
+send "curl -v -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}'\r"
+expect "*#*"
+
+puts "🔍 VERIFICANDO LOGS EM TEMPO REAL..."
+send "pm2 logs iaeon-server --lines 5\r"
+expect "*#*"
+
+interact

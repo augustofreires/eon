@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        expect {
+            "password:" {
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+            "Enter passphrase for key" {
+                send "\r"
+                expect "password:"
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+        }
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+
+# Test client login
+send "echo '=== CLIENT LOGIN TEST ==='\r"
+expect "# "
+send "curl -s -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}' | jq '.message'\r"
+expect "# "
+
+# Test admin login
+send "echo '=== ADMIN LOGIN TEST ==='\r"
+expect "# "
+send "curl -s -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@iaeon.com\",\"password\":\"123456\",\"isAdmin\":true}' | jq '.message // .error'\r"
+expect "# "
+
+send "exit\r"
+expect eof

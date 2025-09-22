@@ -1,0 +1,64 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+# Upload do arquivo primeiro
+puts "\n📦 FAZENDO UPLOAD DO FRONTEND..."
+spawn scp -o StrictHostKeyChecking=no frontend-build.tar.gz root@31.97.28.231:/tmp/
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "100%" {
+        puts "\n✅ Upload concluído!"
+    }
+    timeout {
+        puts "\n❌ Timeout no upload"
+        exit 1
+    }
+}
+
+expect eof
+
+# Agora conectar via SSH para extrair
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 EXTRAINDO FRONTEND NO SERVIDOR..."
+
+        # Fazer backup dos arquivos atuais
+        send "cd /var/www/html && cp -r static static.backup.$(date +%Y%m%d-%H%M%S) 2>/dev/null || echo 'Sem backup anterior'\r"
+        expect "*# "
+
+        # Extrair os novos arquivos
+        send "tar -xzf /tmp/frontend-build.tar.gz -C /var/www/html/\r"
+        expect "*# "
+
+        # Verificar se os arquivos foram extraídos
+        puts "\n🔍 Verificando arquivos..."
+        send "ls -la /var/www/html/static/js/ | head -3\r"
+        expect "*# "
+
+        send "ls -la /var/www/html/static/css/ | head -3\r"
+        expect "*# "
+
+        # Limpar arquivo temporário
+        send "rm /tmp/frontend-build.tar.gz\r"
+        expect "*# "
+
+        puts "\n✅ DEPLOY DO FRONTEND CONCLUÍDO!"
+        puts "🌐 Teste em: https://iaeon.site/operations"
+
+        send "exit\r"
+    }
+}
+
+expect eof

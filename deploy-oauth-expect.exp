@@ -1,0 +1,122 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Deploy da correção OAuth
+puts "🚀 Iniciando deploy da correção OAuth..."
+
+# Enviar AuthContext.tsx
+puts "📤 Enviando AuthContext.tsx..."
+spawn scp -o StrictHostKeyChecking=no client/src/contexts/AuthContext.tsx root@31.97.28.231:/var/www/iaeon/client/src/contexts/
+expect {
+    "*password*" { send "62uDLW4RJ9ae28EPVfp5yzT##\r"; exp_continue }
+    "*yes/no*" { send "yes\r"; exp_continue }
+    eof
+}
+
+# Enviar DerivAccountPanel.tsx
+puts "📤 Enviando DerivAccountPanel.tsx..."
+spawn scp -o StrictHostKeyChecking=no client/src/components/DerivAccountPanel.tsx root@31.97.28.231:/var/www/iaeon/client/src/components/
+expect {
+    "*password*" { send "62uDLW4RJ9ae28EPVfp5yzT##\r"; exp_continue }
+    "*yes/no*" { send "yes\r"; exp_continue }
+    eof
+}
+
+# Enviar OperationsPage.tsx
+puts "📤 Enviando OperationsPage.tsx..."
+spawn scp -o StrictHostKeyChecking=no client/src/pages/OperationsPage.tsx root@31.97.28.231:/var/www/iaeon/client/src/pages/
+expect {
+    "*password*" { send "62uDLW4RJ9ae28EPVfp5yzT##\r"; exp_continue }
+    "*yes/no*" { send "yes\r"; exp_continue }
+    eof
+}
+
+# Enviar setup.js
+puts "📤 Enviando setup.js..."
+spawn scp -o StrictHostKeyChecking=no server/database/setup.js root@31.97.28.231:/var/www/iaeon/server/database/
+expect {
+    "*password*" { send "62uDLW4RJ9ae28EPVfp5yzT##\r"; exp_continue }
+    "*yes/no*" { send "yes\r"; exp_continue }
+    eof
+}
+
+puts "✅ Arquivos enviados!"
+
+# Conectar e executar comandos
+puts "🔧 Executando build e restart..."
+spawn ssh -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "*password*" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "*#*"
+
+        # Comandos na VPS
+        send "cd /var/www/iaeon\r"
+        expect "*#*"
+
+        send "echo '💾 Fazendo backup...'\r"
+        expect "*#*"
+
+        send "mkdir -p /tmp/backup-oauth-\$(date +%Y%m%d-%H%M%S)\r"
+        expect "*#*"
+
+        send "echo '🏗️ Build do cliente...'\r"
+        expect "*#*"
+
+        send "cd client\r"
+        expect "*#*"
+
+        send "rm -rf build/\r"
+        expect "*#*"
+
+        send "npm run build\r"
+        expect {
+            "*build folder is ready*" {
+                send "echo '✅ Build concluído!'\r"
+                expect "*#*"
+            }
+            "*error*" {
+                send "echo '❌ Erro no build'\r"
+                expect "*#*"
+            }
+            timeout {
+                send "echo '⏰ Build em andamento...'\r"
+                expect "*#*"
+            }
+        }
+
+        send "cd /var/www/iaeon\r"
+        expect "*#*"
+
+        send "echo '🔄 Reiniciando PM2...'\r"
+        expect "*#*"
+
+        send "pm2 restart all\r"
+        expect "*#*"
+
+        send "pm2 status\r"
+        expect "*#*"
+
+        send "echo '\r🎉 DEPLOY CONCLUÍDO!'\r"
+        expect "*#*"
+
+        send "echo '🧪 Teste: https://iaeon.site/operations'\r"
+        expect "*#*"
+
+        send "echo '👤 Login: cliente@iaeon.com / 123456'\r"
+        expect "*#*"
+
+        send "exit\r"
+    }
+    "*yes/no*" {
+        send "yes\r"
+        exp_continue
+    }
+    eof
+}
+
+puts "\n🎯 CORREÇÃO OAUTH DEPLOYADA!"
+puts "============================="
+puts "🧪 TESTE AGORA: https://iaeon.site/operations"

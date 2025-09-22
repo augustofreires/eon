@@ -1,0 +1,60 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔧 Corrigindo toast.success..."
+
+# Primeiro, vamos ver o contexto da linha 226
+send "sed -n '220,235p' ./client/src/contexts/AuthContext.tsx\r"
+expect "*#*"
+
+puts "📝 Aplicando correção definitiva do toast..."
+
+# Substituir a linha 226 com a correção correta
+send "sed -i '226c\\        if (manual) { toast.success(`Conta alterada para: \\${account.loginid} (\\${account.currency}) - \\${account.is_virtual ? '\"'\"'Virtual'\"'\"' : '\"'\"'Real'\"'\"'}`); }' ./client/src/contexts/AuthContext.tsx\r"
+expect "*#*"
+
+# Verificar se foi aplicado
+send "grep -n -A 1 -B 1 'manual.*toast' ./client/src/contexts/AuthContext.tsx\r"
+expect "*#*"
+
+puts "🔧 Aplicando mais correções para evitar múltiplas notificações..."
+
+# Verificar e corrigir também possíveis outras fontes de notificações
+# Verificar se há outras chamadas de toast no OperationsPage
+send "grep -n 'toast.*Conta.*conectada' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🏗️ Fazendo build..."
+send "cd client && npm run build\r"
+expect {
+    "*build folder is ready*" {
+        puts "✅ Build OK"
+    }
+    "*compiled successfully*" {
+        puts "✅ Build OK"
+    }
+    timeout {
+        puts "⏰ Build timeout"
+    }
+}
+expect "*#*"
+
+puts "🔄 Reiniciando PM2..."
+send "cd /root/eon && pm2 restart all\r"
+expect "*#*"
+
+puts "🎉 CORREÇÃO APLICADA!"
+puts "🧪 Teste agora: https://iaeon.site/operations"
+
+send "exit\r"
+expect eof

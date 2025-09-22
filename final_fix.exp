@@ -1,0 +1,46 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect "root@"
+
+send "cd /root/eon\r"
+expect "root@"
+
+# Adicionar bot cc se necessário
+send "sudo -u postgres psql -d eon_platform -c \"INSERT INTO bots (name, description, xml_content, is_active) SELECT 'cc', 'Bot personalizado com algoritmos de análise técnica', '<?xml version=\\\"1.0\\\"?><xml><block type=\\\"trade\\\"></block></xml>', true WHERE NOT EXISTS (SELECT 1 FROM bots WHERE name = 'cc');\"\r"
+expect "root@"
+
+# Verificar bots finais
+send "sudo -u postgres psql -d eon_platform -c 'SELECT COUNT(*) as total, STRING_AGG(name, \", \") as nomes FROM bots;'\r"
+expect "root@"
+
+# Reiniciar PM2
+send "pm2 restart all\r"
+expect "root@"
+
+send "sleep 3\r"
+expect "root@"
+
+# Testar API
+send "curl -s http://localhost:3000/api/bots\r"
+expect "root@"
+
+send "exit\r"
+expect eof

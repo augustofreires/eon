@@ -1,0 +1,73 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        expect {
+            "password:" {
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+            "Enter passphrase for key" {
+                send "\r"
+                expect "password:"
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+        }
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+
+# First, rename password to password_hash (most critical fix)
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users RENAME COLUMN password TO password_hash;\"\r"
+expect "# "
+
+# Add status column
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';\"\r"
+expect "# "
+
+# Add deriv columns
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_access_token VARCHAR(500);\"\r"
+expect "# "
+
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_account_id VARCHAR(100);\"\r"
+expect "# "
+
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_connected BOOLEAN DEFAULT false;\"\r"
+expect "# "
+
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_email VARCHAR(255);\"\r"
+expect "# "
+
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_currency VARCHAR(10);\"\r"
+expect "# "
+
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_country VARCHAR(10);\"\r"
+expect "# "
+
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_is_virtual BOOLEAN DEFAULT false;\"\r"
+expect "# "
+
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_fullname VARCHAR(255);\"\r"
+expect "# "
+
+send "sudo -u postgres psql -d eon_platform -c \"ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_accounts_tokens TEXT;\"\r"
+expect "# "
+
+# Update existing users to have active status
+send "sudo -u postgres psql -d eon_platform -c \"UPDATE users SET status = 'active' WHERE status IS NULL;\"\r"
+expect "# "
+
+# Verify the changes
+send "sudo -u postgres psql -d eon_platform -c \"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position;\"\r"
+expect "# "
+
+send "exit\r"
+expect eof

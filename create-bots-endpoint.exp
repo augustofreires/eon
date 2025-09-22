@@ -1,0 +1,64 @@
+#!/usr/bin/expect -f
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "cd /root/eon/server/routes\r"
+expect "#"
+
+# Verificar se existe bots.js
+send "ls -la | grep bots\r"
+expect "#"
+
+# Criar endpoint para listar bots no operations.js
+send "cp operations.js operations.js.backup\r"
+expect "#"
+
+# Adicionar endpoint para listar bots
+send "cat >> operations.js << 'END_ENDPOINT'
+
+// Endpoint para listar bots disponíveis
+router.get('/bots', authenticateToken, async (req, res) => {
+  try {
+    console.log('📋 Buscando bots disponíveis...');
+    
+    const result = await query(`
+      SELECT id, name, description, image_url, is_active, created_at
+      FROM bots 
+      WHERE is_active = true 
+      ORDER BY name ASC
+    `);
+    
+    console.log(\`✅ \${result.rows.length} bots encontrados\`);
+    
+    res.json({
+      success: true,
+      bots: result.rows,
+      total: result.rows.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao buscar bots:', error);
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      success: false 
+    });
+  }
+});
+
+END_ENDPOINT\r"
+expect "#"
+
+# Reiniciar PM2
+send "cd /root/eon && pm2 restart iaeon-server\r"
+expect "#"
+
+# Testar o endpoint
+send "sleep 3 && curl -H \"Authorization: Bearer test\" http://localhost:5000/api/operations/bots\r"
+expect "#"
+
+send "exit\r"
+expect eof

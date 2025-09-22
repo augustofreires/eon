@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        expect {
+            "password:" {
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+            "Enter passphrase for key" {
+                send "\r"
+                expect "password:"
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+        }
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "sudo -u postgres psql -d eon_platform -c \"SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position;\"\r"
+expect "# "
+send "exit\r"
+expect eof

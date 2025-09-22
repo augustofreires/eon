@@ -1,0 +1,23 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "systemctl reload nginx\r"
+expect "#"
+
+send "echo 'TWO-SECTION LAYOUT DEPLOYED!'\r"
+expect "#"
+
+send "echo 'GRAFICO + OPERACOES = NEW LAYOUT'\r"
+expect "#"
+
+send "echo 'TEST: https://iaeon.site/operations'\r"
+expect "#"
+
+send "exit\r"
+expect eof

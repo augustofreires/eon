@@ -1,0 +1,45 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Upload new JS file
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/static/js/main.152994e3.js" root@31.97.28.231:/tmp/
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/index.html" root@31.97.28.231:/tmp/
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+# SSH and deploy
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "echo 'DEPLOYING RESPONSIVE LAYOUT FIXES...'\\r"
+expect "#"
+
+send "rm -f /var/www/html/static/js/main*.js\\r"
+expect "#"
+
+send "cp /tmp/main.152994e3.js /var/www/html/static/js/\\r"
+expect "#"
+
+send "cp /tmp/index.html /var/www/html/\\r"
+expect "#"
+
+send "systemctl reload nginx\\r"
+expect "#"
+
+send "echo 'RESPONSIVE FIXES DEPLOYED!'\\r"
+send "echo 'FIXED: Bot selection section visibility on desktop'\\r"
+send "echo 'FIXED: Controls section cut-off on desktop'\\r"
+send "echo 'FIXED: Account balance overlapping chart on mobile'\\r"
+send "echo 'ADDED: Current price display on chart'\\r"
+send "echo 'TEST: https://iaeon.site/operations'\\r"
+
+send "exit\\r"
+expect eof

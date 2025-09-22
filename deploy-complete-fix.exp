@@ -1,0 +1,60 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "root@" {
+        send "cd /root/eon\r"
+    }
+}
+
+expect "root@"
+send "echo '=== Atualizando com componentes completos ==='\r"
+
+expect "root@"
+send "git pull origin main\r"
+
+expect "root@"
+send "echo '=== Verificando se todos os componentes existem ==='\r"
+
+expect "root@"
+send "ls -la client/src/components/DerivTradingChart.tsx\r"
+
+expect "root@"
+send "ls -la client/src/services/DerivWebSocketService.ts\r"
+
+expect "root@"
+send "ls -la client/src/hooks/useDerivOperations.ts\r"
+
+expect "root@"
+send "echo '=== Fazendo build final ==='\r"
+
+expect "root@"
+send "cd client && npm run build\r"
+
+expect "root@"
+send "echo '=== Restart do servidor ==='\r"
+
+expect "root@"
+send "cd .. && pm2 restart iaeon-server\r"
+
+expect "root@"
+send "echo '=== DEPLOY FINALIZADO COM SUCESSO! ==='\r"
+
+expect "root@"
+send "pm2 status\r"
+
+expect "root@"
+send "exit\r"
+
+expect eof

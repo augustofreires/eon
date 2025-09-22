@@ -1,0 +1,25 @@
+#!/usr/bin/expect -f
+set timeout 120
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "cd /root/eon/client\r"
+expect "#"
+
+# Fazer novo build
+send "npm run build\r"
+expect "#"
+
+# Copiar para o servidor web
+send "cp -r build/* /var/www/html/\r"
+expect "#"
+
+# Testar o endpoint de bots com um token real
+send "cd /root/eon && pm2 logs iaeon-server --lines 3\r"
+expect "#"
+
+send "exit\r"
+expect eof

@@ -1,0 +1,69 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🎯 ENCONTREI O PROBLEMA! Linha 155 do OperationsPage.tsx"
+puts "🔧 Corrigindo a linha que gera as múltiplas notificações..."
+
+# Mostrar o contexto da linha 155
+send "sed -n '150,160p' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+# Comentar a linha 155 que gera as notificações
+send "sed -i '155s/.*/        \\/\\/ CORREÇÃO: Notificação removida para evitar spam - OAuth já mostra notificação/' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+# Verificar a correção
+puts "📋 Verificando correção aplicada:"
+send "sed -n '150,160p' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🏗️ Fazendo build final..."
+send "cd client\r"
+expect "*#*"
+
+send "npm run build\r"
+expect {
+    "*build folder is ready*" {
+        puts "✅ Build final completo!"
+    }
+    "*compiled successfully*" {
+        puts "✅ Build final completo!"
+    }
+    timeout {
+        puts "⏰ Build em andamento..."
+    }
+}
+expect "*#*"
+
+puts "🔄 Reiniciando PM2 - correção final..."
+send "cd /root/eon && pm2 restart all\r"
+expect "*#*"
+
+send "pm2 status\r"
+expect "*#*"
+
+puts ""
+puts "🎉 CORREÇÃO DEFINITIVA APLICADA!"
+puts "=================================="
+puts "✅ AuthContext: toast só aparece quando manual"
+puts "✅ OperationsPage linha 155: notificação removida"
+puts "✅ Build e restart concluídos"
+puts ""
+puts "🧪 TESTE AGORA:"
+puts "   https://iaeon.site/operations"
+puts "   cliente@iaeon.com / 123456"
+puts ""
+puts "🎯 Agora deve aparecer APENAS 1 notificação!"
+
+send "exit\r"
+expect eof

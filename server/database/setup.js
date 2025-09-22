@@ -21,6 +21,11 @@ const setupDatabase = async () => {
         status VARCHAR(50) DEFAULT 'active',
         deriv_token VARCHAR(500),
         deriv_account_id VARCHAR(100),
+        deriv_connected BOOLEAN DEFAULT false,
+        deriv_access_token TEXT,
+        deriv_currency VARCHAR(20),
+        deriv_is_virtual BOOLEAN DEFAULT false,
+        deriv_accounts_tokens JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -34,6 +39,7 @@ const setupDatabase = async () => {
         description TEXT,
         xml_content TEXT NOT NULL,
         xml_filename VARCHAR(255) NOT NULL,
+        image_url VARCHAR(500),
         created_by INTEGER REFERENCES users(id),
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -135,6 +141,7 @@ const setupDatabase = async () => {
         id SERIAL PRIMARY KEY,
         affiliate_enabled BOOLEAN DEFAULT false,
         affiliate_token VARCHAR(255),
+        affiliate_link TEXT,
         commission_rate DECIMAL(5,2) DEFAULT 0.5,
         tracking_enabled BOOLEAN DEFAULT true,
         custom_landing_page VARCHAR(500),
@@ -142,15 +149,39 @@ const setupDatabase = async () => {
       )
     `);
 
-    // Adicionar colunas para sistema de afiliados na tabela users (se não existirem)
+    // Adicionar colunas para sistema de afiliados e Deriv na tabela users (se não existirem)
     try {
       await pool.query(`
-        ALTER TABLE users 
+        ALTER TABLE users
         ADD COLUMN IF NOT EXISTS referral_id VARCHAR(255),
-        ADD COLUMN IF NOT EXISTS commission_earned DECIMAL(10,2) DEFAULT 0
+        ADD COLUMN IF NOT EXISTS commission_earned DECIMAL(10,2) DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS profile_picture VARCHAR(500),
+        ADD COLUMN IF NOT EXISTS deriv_currency VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS deriv_is_virtual BOOLEAN DEFAULT false,
+        ADD COLUMN IF NOT EXISTS deriv_accounts_tokens JSONB
       `);
     } catch (error) {
-      console.log('Colunas de afiliado já existem ou erro na migração:', error.message);
+      console.log('Colunas já existem ou erro na migração:', error.message);
+    }
+
+    // Adicionar coluna affiliate_link na tabela deriv_config se não existir
+    try {
+      await pool.query(`
+        ALTER TABLE deriv_config
+        ADD COLUMN IF NOT EXISTS affiliate_link TEXT
+      `);
+    } catch (error) {
+      console.log('Coluna affiliate_link já existe ou erro na migração:', error.message);
+    }
+
+    // Adicionar coluna image_url na tabela bots se não existir
+    try {
+      await pool.query(`
+        ALTER TABLE bots
+        ADD COLUMN IF NOT EXISTS image_url VARCHAR(500)
+      `);
+    } catch (error) {
+      console.log('Coluna image_url já existe ou erro na migração:', error.message);
     }
 
     // Inserir configurações padrão se não existirem
@@ -159,6 +190,15 @@ const setupDatabase = async () => {
       await pool.query(`
         INSERT INTO system_settings (id, deriv_app_id, deriv_app_token)
         VALUES (1, '', '')
+      `);
+    }
+
+    // Inserir configuração padrão do Deriv se não existir
+    const derivConfigExists = await pool.query('SELECT id FROM deriv_config WHERE id = 1');
+    if (derivConfigExists.rows.length === 0) {
+      await pool.query(`
+        INSERT INTO deriv_config (id, affiliate_enabled, affiliate_token, affiliate_link, commission_rate, tracking_enabled)
+        VALUES (1, false, '', '', 0.5, true)
       `);
     }
 

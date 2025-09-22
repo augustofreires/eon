@@ -1,0 +1,37 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 ATUALIZANDO FRONTEND COM CORREÇÃO DOS BOTS..."
+
+        # Navegar para o diretório do projeto
+        send "cd /root/eon\r"
+        expect "*# "
+
+        # Atualizar o frontend no servidor
+        puts "\n📝 Atualizando loadAvailableBots no servidor..."
+        send "sed -i 's/const botsData = Array.isArray(response.data) ? response.data : \\[\\];/let botsData = \\[\\]; if (response.data \\&\\& response.data.bots \\&\\& Array.isArray(response.data.bots)) { botsData = response.data.bots; } else if (Array.isArray(response.data)) { botsData = response.data; }/' /var/www/html/static/js/*.js\r"
+        expect "*# "
+
+        puts "\n🔄 Reiniciando nginx..."
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ ATUALIZAÇÃO CONCLUÍDA!"
+        puts "🌐 Teste a aplicação: https://iaeon.site/operations"
+        puts "📝 Agora os bots devem aparecer corretamente!"
+
+        send "exit\r"
+    }
+}
+
+expect eof

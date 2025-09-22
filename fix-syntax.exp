@@ -1,0 +1,55 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔧 CORRIGINDO ERRO DE SINTAXE..."
+
+# Restaurar backup e corrigir direito
+send "cp ./client/src/pages/OperationsPage.tsx.debug2 ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+# Corrigir a linha 104 com sintaxe correta
+send "sed -i '104s/Array.isArray(response.data) ? response.data : );/Array.isArray(response.data) ? response.data : []);/' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+# Adicionar logs simples
+send "sed -i '/const loadAvailableBots = async () => {/a\\    console.log(\"🚨 FUNÇÃO loadAvailableBots EXECUTADA!\");' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+# Verificar a correção
+send "sed -n '104p' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🏗️ BUILD CORRIGIDO..."
+send "cd client && npm run build\r"
+expect {
+    "*build folder is ready*" {
+        puts "✅ Build OK"
+    }
+    "*compiled successfully*" {
+        puts "✅ Build OK"
+    }
+    timeout {
+        puts "⏰ Building..."
+    }
+}
+expect "*#*"
+
+send "cd /root/eon && pm2 restart all\r"
+expect "*#*"
+
+puts ""
+puts "✅ SINTAXE CORRIGIDA!"
+puts "🧪 TESTE: https://iaeon.site/operations"
+puts "🔍 Procure no Console: '🚨 FUNÇÃO loadAvailableBots EXECUTADA!'"
+
+interact

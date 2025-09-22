@@ -1,0 +1,42 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔍 DEBUGANDO PROBLEMA DOS BOTS..."
+
+        # Verificar se o JavaScript atual ainda tem o código antigo
+        send "cd /var/www/html/static/js\r"
+        expect "*# "
+
+        puts "\n📝 Procurando padrão antigo de parsing dos bots..."
+        send "grep -o 'Array\\.isArray.*response\\.data.*:.*\\[\\]' main*.js | head -3\r"
+        expect "*# "
+
+        puts "\n🔍 Verificando estrutura atual dos bots no servidor..."
+        send "cd /root/eon/server && node -e \"console.log('TESTE DIRETO:'); const jwt = require('jsonwebtoken'); const token = jwt.sign({userId: 1}, 'minha-chave-secreta-muito-longa-e-segura-para-desenvolvimento-12345', {expiresIn: '1h'}); console.log('Token:', token.substring(0, 30) + '...');\"\r"
+        expect "*# "
+
+        # Vou criar um script para fazer uma requisição completa
+        puts "\n🧪 Testando requisição completa como o frontend faria..."
+        send "curl -s -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NTgyMDE0NjgsImV4cCI6MTc1ODIwNTA2OH0.0cQ6e8nvtv2AA2TWP-7J4_PVWDAywPlr2XDk2RUuPxo' http://localhost:5000/api/bots | python3 -m json.tool | head -20\r"
+        expect "*# "
+
+        puts "\n📊 Verificando resposta estruturada..."
+        send "curl -s -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImVtYWlsIjoiYWRtaW5AdGVzdC5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3NTgyMDE0NjgsImV4cCI6MTc1ODIwNTA2OH0.0cQ6e8nvtv2AA2TWP-7J4_PVWDAywPlr2XDk2RUuPxo' http://localhost:5000/api/bots | jq '.bots | length'\r"
+        expect "*# "
+
+        puts "\n✅ Diagnóstico concluído"
+        send "exit\r"
+    }
+}
+
+expect eof

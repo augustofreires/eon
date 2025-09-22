@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Upload new index.html and CSS
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/index.html" root@31.97.28.231:/tmp/
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+spawn scp -o StrictHostKeyChecking=no -o PreferredAuthentications=password "/Users/augustofreires/Desktop/Bots deriv/client/build/static/css/main.16c95ed2.css" root@31.97.28.231:/tmp/
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+# SSH and fix
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "echo '🔧 FIXING INDEX.HTML AND CSS FILES...'\r"
+expect "#"
+
+send "cp /tmp/index.html /var/www/html/\r"
+expect "#"
+
+send "mkdir -p /var/www/html/static/css\r"
+expect "#"
+
+send "cp /tmp/main.16c95ed2.css /var/www/html/static/css/\r"
+expect "#"
+
+send "echo '📋 Checking what HTML references now:'\r"
+expect "#"
+
+send "grep -o 'main\\.[a-zA-Z0-9]*\\.js' /var/www/html/index.html\r"
+expect "#"
+
+send "echo '📁 Verifying all files exist:'\r"
+expect "#"
+
+send "ls -la /var/www/html/static/js/main*\r"
+expect "#"
+
+send "ls -la /var/www/html/static/css/main*\r"
+expect "#"
+
+send "systemctl reload nginx\r"
+expect "#"
+
+send "echo '✅ INDEX.HTML AND CSS FIXED!'\r"
+send "echo '🌐 TEST NOW: https://iaeon.site/operations'\r"
+
+send "exit\r"
+expect eof

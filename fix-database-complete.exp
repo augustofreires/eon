@@ -1,0 +1,68 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "7eL3Kp9#nX2qF8sR"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔍 DIAGNOSTICANDO PROBLEMA DO BANCO DE DADOS..."
+
+        # Verificar se PostgreSQL está rodando
+        send "systemctl status postgresql\r"
+        expect "*# "
+
+        # Verificar bancos existentes
+        send "sudo -u postgres psql -l\r"
+        expect "*# "
+
+        # Tentar conectar ao banco eon_platform
+        send "sudo -u postgres psql -d eon_platform -c '\\dt'\r"
+        expect "*# "
+
+        # Se não existir, criar o banco
+        puts "\n🏗️ CRIANDO BANCO SE NECESSÁRIO..."
+        send "sudo -u postgres createdb eon_platform 2>/dev/null || echo 'Banco já existe'\r"
+        expect "*# "
+
+        # Verificar tabelas novamente
+        send "sudo -u postgres psql -d eon_platform -c '\\dt'\r"
+        expect "*# "
+
+        # Se não houver tabelas, executar setup
+        puts "\n🚀 EXECUTANDO SETUP DO BANCO..."
+        send "cd /root/eon/server\r"
+        expect "*# "
+
+        send "node database/setup.js\r"
+        expect {
+            "*# " {
+                puts "\nSetup concluído"
+            }
+            timeout {
+                puts "\nTimeout no setup"
+            }
+        }
+
+        # Verificar tabelas após setup
+        send "sudo -u postgres psql -d eon_platform -c '\\dt'\r"
+        expect "*# "
+
+        # Reiniciar servidor
+        puts "\n🔄 REINICIANDO SERVIDOR..."
+        send "pm2 restart iaeon-server\r"
+        expect "*# "
+
+        send "pm2 logs iaeon-server --lines 5\r"
+        expect "*# "
+
+        send "exit\r"
+    }
+}
+
+expect eof

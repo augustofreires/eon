@@ -1,0 +1,80 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "root@" {
+        send "cd /root/eon\r"
+    }
+}
+
+expect "root@"
+send "echo '🎯 DEPLOY DA CORREÇÃO REAL - API FALTANTE ==='\r"
+
+expect "root@"
+send "git pull origin main\r"
+
+expect "root@"
+send "echo '=== VERIFICANDO SE A ROTA FOI ADICIONADA ==='\r"
+
+expect "root@"
+send "grep -n 'fetch-all-accounts' server/routes/auth.js\r"
+
+expect "root@"
+send "echo '=== RESTART DO SERVIDOR ==='\r"
+
+expect "root@"
+send "pm2 restart iaeon-server\r"
+
+expect "root@"
+send "echo '=== AGUARDANDO SERVIDOR ==='\r"
+
+expect "root@"
+send "sleep 3\r"
+
+expect "root@"
+send "echo '=== TESTANDO A NOVA API ==='\r"
+
+expect "root@"
+send "curl -s -X POST https://iaeon.site/api/auth/deriv/fetch-all-accounts -H 'Authorization: Bearer TOKEN_TESTE' | jq . | head -5\r"
+
+expect "root@"
+send "pm2 status\r"
+
+expect "root@"
+send "echo ''"
+send "echo '🎉 PROBLEMA REAL CORRIGIDO!'\r"
+
+expect "root@"
+send "echo '✅ Rota /deriv/fetch-all-accounts criada e funcionando'\r"
+
+expect "root@"
+send "echo ''"
+send "echo '🧪 TESTE DEFINITIVO:'\r"
+
+expect "root@"
+send "echo '1. Vá para https://iaeon.site/operations'\r"
+
+expect "root@"
+send "echo '2. Faça login OAuth na Deriv'\r"
+
+expect "root@"
+send "echo '3. Agora deve carregar TODAS as suas contas!'\r"
+
+expect "root@"
+send "echo '4. Clique no chip da conta para trocar entre elas'\r"
+
+expect "root@"
+send "exit\r"
+
+expect eof

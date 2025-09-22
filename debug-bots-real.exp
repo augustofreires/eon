@@ -1,0 +1,82 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔍 VERIFICANDO SE A CORREÇÃO FOI REALMENTE APLICADA..."
+
+# Verificar linha 102 específica
+send "sed -n '100,105p' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🧪 FAZENDO LOGIN REAL E TESTANDO ENDPOINT..."
+
+# Fazer login e pegar token real
+send "curl -X POST http://localhost:5000/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}' -s | jq -r '.token' > /tmp/token.txt\r"
+expect "*#*"
+
+send "cat /tmp/token.txt\r"
+expect "*#*"
+
+puts "🔍 TESTANDO ENDPOINT /api/bots COM TOKEN REAL..."
+
+# Testar endpoint com token
+send "TOKEN=\\$(cat /tmp/token.txt); curl -X GET http://localhost:5000/api/bots -H \"Authorization: Bearer \\$TOKEN\" -s | jq .\r"
+expect "*#*"
+
+puts "📋 ADICIONANDO LOGS DE DEBUG NO FRONTEND..."
+
+# Backup do arquivo
+send "cp ./client/src/pages/OperationsPage.tsx ./client/src/pages/OperationsPage.tsx.debug-backup\r"
+expect "*#*"
+
+# Adicionar console.log na função loadAvailableBots
+send "sed -i '/const loadAvailableBots/a\\    console.log(\"🔍 CHAMANDO loadAvailableBots...\");' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+send "sed -i '/const response = await axios.get/a\\      console.log(\"📡 Response recebida:\", response);\\n      console.log(\"📊 Response.data:\", response.data);\\n      console.log(\"🤖 Response.data.bots:\", response.data.bots);' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+send "sed -i '/const botsData = Array.isArray/a\\      console.log(\"🎯 botsData final:\", botsData);' ./client/src/pages/OperationsPage.tsx\r"
+expect "*#*"
+
+puts "🏗️ REBUILD COM LOGS DE DEBUG..."
+send "cd client && npm run build\r"
+expect {
+    "*build folder is ready*" {
+        puts "✅ Build OK"
+    }
+    "*compiled successfully*" {
+        puts "✅ Build OK"
+    }
+    timeout {
+        puts "⏰ Building..."
+    }
+}
+expect "*#*"
+
+send "cd /root/eon && pm2 restart all\r"
+expect "*#*"
+
+puts ""
+puts "🔍 DEBUG ATIVADO!"
+puts "=================="
+puts ""
+puts "🧪 AGORA TESTE:"
+puts "   1. https://iaeon.site/operations"
+puts "   2. Login: cliente@iaeon.com / 123456"
+puts "   3. Conecte Deriv"
+puts "   4. Abra DevTools Console (F12)"
+puts "   5. Veja os logs de debug"
+puts ""
+puts "📊 Depois volte aqui e digite 'pm2 logs' para ver logs do servidor"
+
+interact

@@ -1,0 +1,45 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔍 INVESTIGANDO LOOP INFINITO DOS BOTS..."
+
+        # Verificar se endpoint bots está funcionando
+        send "curl -X GET http://localhost:3001/api/bots -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIsInJvbGUiOiJjbGllbnRlIiwiaWF0IjoxNzI2NjcxMzI1LCJleHAiOjE3MjY2NzQ5MjV9.8yOWl2CK1tQHYEj77qKaZE6aUKX_iLDX5jLJTNdF7OI'\r"
+        expect "*# "
+
+        # Verificar porta do servidor
+        send "netstat -tlnp | grep :3001\r"
+        expect "*# "
+
+        # Verificar logs do servidor em tempo real
+        send "pm2 logs iaeon-server --lines 10\r"
+        expect "*# "
+
+        # Verificar se há erro no banco
+        send "psql -d eon_platform -c 'SELECT COUNT(*) FROM bots;'\r"
+        expect "*# "
+
+        # Verificar se processamento OAuth está OK
+        send "pm2 logs iaeon-server | grep -i oauth | tail -5\r"
+        expect "*# "
+
+        puts "\n🎯 ANÁLISE:"
+        puts "1. Se curl /api/bots falha = problema backend"
+        puts "2. Se banco tem 0 bots = problema dados"
+        puts "3. Se logs mostram erro = identificar causa"
+
+        send "exit\r"
+    }
+}
+
+expect eof

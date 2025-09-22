@@ -1,0 +1,46 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔍 VERIFICANDO SE DEPLOY FOI APLICADO..."
+
+        # Verificar se arquivo foi realmente atualizado
+        send "curl -s -I https://iaeon.site/static/js/main.939f0c07.js | head -1\r"
+        expect "*# "
+
+        # Verificar tamanho do arquivo (deve ser 1457709)
+        send "ls -la /var/www/html/static/js/main.939f0c07.js | awk '{print \\$5}'\r"
+        expect "*# "
+
+        # Verificar se debugBotState está no arquivo
+        send "grep -c 'debugBotState' /var/www/html/static/js/main.939f0c07.js\r"
+        expect "*# "
+
+        # Verificar logs do servidor em tempo real
+        send "pm2 logs iaeon-server --lines 5 | grep 'GET /api/bots'\r"
+        expect "*# "
+
+        # Testar endpoint direto
+        send "curl -s http://localhost:3001/api/bots -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIsInJvbGUiOiJjbGllbnRlIiwiaWF0IjoxNzI2NjcxMzI1LCJleHAiOjE3MjY2NzQ5MjV9.8yOWl2CK1tQHYEj77qKaZE6aUKX_iLDX5jLJTNdF7OI' | head -10\r"
+        expect "*# "
+
+        puts "\n🎯 DIAGNÓSTICO:"
+        puts "1. Se curl 200 = arquivo novo está sendo servido"
+        puts "2. Se tamanho = 1457709 = arquivo correto"
+        puts "3. Se debugBotState > 0 = função debug presente"
+        puts "4. Se API retorna dados = backend OK"
+
+        send "exit\r"
+    }
+}
+
+expect eof

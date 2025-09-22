@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+expect {
+    "Enter passphrase" { send "\r"; exp_continue }
+    "password:" { send "62uDLW4RJ9ae28EPVfp5yzT##\r"; expect "root@" }
+    "root@" { }
+}
+
+send "cd /root/eon\r"
+expect "root@"
+
+send "echo '=== VERIFICANDO SE EXISTE ROTA OPERATIONS ==='\\r"
+expect "root@"
+
+send "grep -n 'router.get.*operations' server/routes/auth.js\r"
+expect "root@"
+
+send "echo '=== ADICIONANDO ROTA PARA INTERCEPTAR OAUTH EM /operations ==='\\r"
+expect "root@"
+
+send "cat >> server/routes/auth.js << 'EOF'
+
+// Rota especial para interceptar OAuth callback em /operations
+router.get('/operations-oauth', async (req, res) => {
+  console.log('🔄 OAuth callback interceptado em /operations');
+  console.log('📋 Parâmetros recebidos:', Object.keys(req.query));
+
+  // Se há parâmetros OAuth, processar como callback
+  if (req.query.acct1 && req.query.token1) {
+    console.log('✅ Detectados parâmetros OAuth, processando...');
+
+    // Chamar a função do callback OAuth diretamente
+    return router.get('/deriv/callback')(req, res);
+  }
+
+  // Se não há OAuth, redirecionar para página normal
+  res.redirect('/');
+});
+EOF\\r"
+expect "root@"
+
+send "echo '=== VERIFICANDO SE FOI ADICIONADO ==='\\r"
+expect "root@"
+
+send "tail -20 server/routes/auth.js\\r"
+expect "root@"
+
+send "echo '=== REINICIANDO SERVIDOR ==='\\r"
+expect "root@"
+
+send "pm2 restart iaeon-server\\r"
+expect "root@"
+
+send "echo ''\\r"
+expect "root@"
+
+send "echo '🎯 ROTA ADICIONADA!'\\r"
+expect "root@"
+
+send "echo 'Agora teste o OAuth e veja se aparecem os logs'\\r"
+expect "root@"
+
+send "exit\\r"
+expect eof

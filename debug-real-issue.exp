@@ -1,0 +1,46 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🔍 INVESTIGAÇÃO PROFUNDA - POR QUE BOTS NÃO APARECEM..."
+
+        # Verificar se arquivo foi atualizado
+        send "cd /var/www/html/static/js && ls -la main*.js && stat main*.js\r"
+        expect "*# "
+
+        # Verificar conteúdo do arquivo atual
+        send "grep -o 'loadAvailableBots' /var/www/html/static/js/main*.js | wc -l\r"
+        expect "*# "
+
+        # Testar endpoint direto
+        send "curl -X GET http://localhost:3001/api/bots -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIsInJvbGUiOiJjbGllbnRlIiwiaWF0IjoxNzI2NjcxMzI1LCJleHAiOjE3MjY2NzQ5MjV9.8yOWl2CK1tQHYEj77qKaZE6aUKX_iLDX5jLJTNdF7OI'\r"
+        expect "*# "
+
+        # Verificar logs do servidor em tempo real
+        send "pm2 logs server --lines 5\r"
+        expect "*# "
+
+        # Verificar se nginx está servindo arquivo correto
+        send "curl -I https://iaeon.site/static/js/main.967b26fc.js\r"
+        expect "*# "
+
+        puts "\n🎯 ANÁLISE:"
+        puts "1. Se main*.js não contém 'loadAvailableBots', o deploy falhou"
+        puts "2. Se /api/bots retorna dados, backend está OK"
+        puts "3. Se curl 404 no arquivo .js, nginx não atualizou"
+        puts "4. Vamos identificar onde está o problema real"
+
+        send "exit\r"
+    }
+}
+
+expect eof

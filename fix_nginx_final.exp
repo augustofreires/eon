@@ -1,0 +1,98 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        expect {
+            "password:" {
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+            "Enter passphrase for key" {
+                send "\r"
+                expect "password:"
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+        }
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+
+# Create a corrected Nginx configuration
+send "cat > /etc/nginx/sites-available/iaeon.site << 'EOF'
+server {
+    server_name iaeon.site www.iaeon.site;
+
+    # Headers de segurança
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection \"1; mode=block\";
+    add_header Referrer-Policy strict-origin-when-cross-origin;
+
+    location / {
+        root /var/www/html;
+        index index.html index.htm;
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://localhost:5000/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    location /uploads/ {
+        proxy_pass http://localhost:5000/uploads/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location ~* \\.(js|css)\$ {
+        add_header Cache-Control \"no-cache, no-store, must-revalidate\";
+        expires -1;
+    }
+
+    listen 443 ssl http2;
+    ssl_certificate /etc/letsencrypt/live/iaeon.site/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/iaeon.site/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    listen 80;
+    server_name iaeon.site www.iaeon.site;
+    return 301 https://\$host\$request_uri;
+}
+EOF\r"
+expect "# "
+
+# Test the configuration
+send "nginx -t\r"
+expect "# "
+
+# Restart nginx
+send "systemctl restart nginx\r"
+expect "# "
+
+# Test the login endpoint
+send "curl -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}'\r"
+expect "# "
+
+send "exit\r"
+expect eof

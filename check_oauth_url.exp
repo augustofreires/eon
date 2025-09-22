@@ -1,0 +1,32 @@
+#!/usr/bin/expect -f
+set timeout 15
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+expect {
+    "Enter passphrase" { send "\r"; exp_continue }
+    "password:" { send "62uDLW4RJ9ae28EPVfp5yzT##\r"; expect "root@" }
+    "root@" { }
+}
+
+send "cd /root/eon\r"
+expect "root@"
+
+send "echo '=== VERIFICANDO CONFIGURACAO OAUTH ==='\\r"
+expect "root@"
+
+send "grep -r 'callback\\|redirect' . --include='*.js' --include='*.tsx' | grep -i deriv\r"
+expect "root@"
+
+send "echo '=== VERIFICANDO VARIAVEIS DE AMBIENTE ==='\\r"
+expect "root@"
+
+send "grep DERIV .env 2>/dev/null || echo 'Arquivo .env nao encontrado'\r"
+expect "root@"
+
+send "echo '=== VERIFICANDO ROTA OAUTH CALLBACK ==='\\r"
+expect "root@"
+
+send "grep -A5 -B5 '/deriv/callback\\|oauth.*callback' server/routes/auth.js\r"
+expect "root@"
+
+send "exit\r"
+expect eof

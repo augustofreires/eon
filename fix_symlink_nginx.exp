@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        expect {
+            "password:" {
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+            "Enter passphrase for key" {
+                send "\r"
+                expect "password:"
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+        }
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+
+# Check what the symlink points to
+send "ls -la /etc/nginx/sites-enabled/iaeon.site\r"
+expect "# "
+
+# Remove the old symlink
+send "rm /etc/nginx/sites-enabled/iaeon.site\r"
+expect "# "
+
+# Fix the sites-available config with correct port
+send "sed -i 's/localhost:5001/localhost:5000/g' /etc/nginx/sites-available/iaeon.site\r"
+expect "# "
+
+# Verify the fix
+send "grep 'proxy_pass.*localhost' /etc/nginx/sites-available/iaeon.site\r"
+expect "# "
+
+# Create new symlink
+send "ln -s /etc/nginx/sites-available/iaeon.site /etc/nginx/sites-enabled/iaeon.site\r"
+expect "# "
+
+# Verify the symlink now has correct config
+send "grep 'proxy_pass.*localhost' /etc/nginx/sites-enabled/iaeon.site\r"
+expect "# "
+
+# Test nginx config
+send "nginx -t\r"
+expect "# "
+
+# Restart nginx
+send "systemctl restart nginx\r"
+expect "# "
+
+# Test the login
+send "curl -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}'\r"
+expect "# "
+
+send "exit\r"
+expect eof

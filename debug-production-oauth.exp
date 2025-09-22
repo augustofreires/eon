@@ -1,0 +1,48 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "root@" {
+        send "cd /root/eon\r"
+    }
+}
+
+expect "root@"
+send "echo '=== VERIFICANDO LOGS RECENTES DO SERVIDOR ==='\r"
+
+expect "root@"
+send "pm2 logs iaeon-server --lines 30 | grep -E 'deriv|oauth|login|account|token'\r"
+
+expect "root@"
+send "echo '=== TESTANDO STATUS DERIV EM PRODUCAO ==='\r"
+
+expect "root@"
+send "curl -s https://iaeon.site/api/auth/deriv/status | jq .\r"
+
+expect "root@"
+send "echo '=== VERIFICANDO USUARIOS COM DERIV CONECTADO ==='\r"
+
+expect "root@"
+send "psql -U postgres -d iaeon -c \"SELECT id, email, deriv_connected, deriv_account_id FROM users WHERE deriv_connected = true LIMIT 5;\" 2>/dev/null || echo 'PostgreSQL query failed'\r"
+
+expect "root@"
+send "echo '=== TESTANDO ENDPOINT DE CONTAS ==='\r"
+
+expect "root@"
+send "curl -s https://iaeon.site/api/auth/deriv/accounts | jq .\r"
+
+expect "root@"
+send "exit\r"
+
+expect eof

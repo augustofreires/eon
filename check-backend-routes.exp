@@ -1,0 +1,29 @@
+#!/usr/bin/expect -f
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "#"
+
+send "cd /root/eon/server\r"
+expect "#"
+
+# Procurar por rotas de auth/login
+send "find . -name \"*.js\" -exec grep -l \"auth/login\" {} \;\r"
+expect "#"
+
+# Verificar arquivo de rotas principal
+send "cat server.js | grep -A 10 -B 5 login\r"
+expect "#"
+
+# Verificar se há arquivo específico de rotas auth
+send "ls -la routes/\r"
+expect "#"
+
+# Testar a resposta real da API
+send "curl -v -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\"}'\r"
+expect "#"
+
+send "exit\r"
+expect eof

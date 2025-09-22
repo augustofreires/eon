@@ -1,0 +1,67 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+puts "🔧 CORRIGINDO AUTENTICAÇÃO POSTGRESQL..."
+
+puts "1. Configurando PostgreSQL sem senha..."
+send "sudo -u postgres psql -c \"ALTER USER postgres PASSWORD null;\"\r"
+expect "*#*"
+
+puts "2. Atualizando pg_hba.conf para trust..."
+send "sudo sed -i 's/local   all             postgres                                peer/local   all             postgres                                trust/' /etc/postgresql/16/main/pg_hba.conf\r"
+expect "*#*"
+
+puts "3. Atualizando configuração para localhost..."
+send "sudo sed -i 's/local   all             all                                     peer/local   all             all                                     trust/' /etc/postgresql/16/main/pg_hba.conf\r"
+expect "*#*"
+
+puts "4. Reiniciando PostgreSQL..."
+send "sudo systemctl restart postgresql\r"
+expect "*#*"
+
+puts "5. Testando conexão..."
+send "sudo -u postgres psql eon_platform -c \"SELECT COUNT(*) FROM bots;\"\r"
+expect "*#*"
+
+puts "6. Corrigindo .env para conexão sem senha..."
+send "cat > server/.env << 'EOF'
+DATABASE_URL=postgresql://postgres@localhost:5432/eon_platform
+NODE_ENV=production
+PORT=5000
+JWT_SECRET=minha-chave-secreta-muito-longa-e-segura-para-desenvolvimento-12345
+JWT_EXPIRES_IN=24h
+CORS_ORIGIN=https://iaeon.site
+DERIV_APP_ID=82349
+DERIV_OAUTH_REDIRECT_URL=https://iaeon.site/operations
+EOF\r"
+expect "*#*"
+
+puts "7. Verificando usuários no banco..."
+send "sudo -u postgres psql eon_platform -c \"SELECT id, email, role FROM users;\"\r"
+expect "*#*"
+
+puts "8. Criando usuário com senha correta..."
+send "sudo -u postgres psql eon_platform -c \"INSERT INTO users (name, email, password, role) VALUES ('Cliente Teste', 'cliente@iaeon.com', '\\\$2b\\\$10\\\$example_hash_real', 'client') ON CONFLICT (email) DO UPDATE SET password = '\\\$2b\\\$10\\\$example_hash_real';\"\r"
+expect "*#*"
+
+puts "9. Reiniciando servidor..."
+send "pm2 restart iaeon-server\r"
+expect "*#*"
+
+puts "10. Testando login local..."
+send "sleep 3 && curl -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}'\r"
+expect "*#*"
+
+puts "CORREÇÃO POSTGRESQL CONCLUÍDA!"
+
+interact

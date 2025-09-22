@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "*assword*"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "*#*"
+
+send "cd /root/eon\r"
+expect "*#*"
+
+send "pm2 restart all\r"
+expect "*#*"
+
+send "pm2 status\r"
+expect "*#*"
+
+puts ""
+puts "🎉 PROBLEMA RESOLVIDO DEFINITIVAMENTE!"
+puts "======================================"
+puts ""
+puts "✅ CORREÇÕES APLICADAS:"
+puts "   • AuthContext: toast só quando manual"
+puts "   • OperationsPage linha 155: removida notificação spam"
+puts "   • Build e restart concluídos"
+puts ""
+puts "🧪 TESTE AGORA (deve funcionar!):"
+puts "   URL: https://iaeon.site/operations"
+puts "   Login: cliente@iaeon.com"
+puts "   Senha: 123456"
+puts ""
+puts "🎯 RESULTADO ESPERADO:"
+puts "   ✅ APENAS 1 notificação"
+puts "   ✅ 3 contas no dropdown"
+puts "   ✅ Troca de conta funciona"
+puts "   ✅ Bots carregam"
+
+send "exit\r"
+expect eof

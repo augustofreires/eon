@@ -1,0 +1,55 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        expect {
+            "password:" {
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+            "Enter passphrase for key" {
+                send "\r"
+                expect "password:"
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+        }
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+
+# Clear PM2 logs
+send "pm2 flush iaeon-server\r"
+expect "# "
+
+# Start monitoring logs in real-time
+send "pm2 logs iaeon-server --raw | grep -E '(login|Login|credenciais|Invalid|POST.*auth)' &\r"
+expect "# "
+
+# Test with curl to confirm backend works
+send "curl -X POST http://localhost:5000/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}'\r"
+expect "# "
+
+send "echo '=== Backend test completed ==='\r"
+expect "# "
+
+# Now test what the frontend is actually sending - simulate the frontend request
+send "curl -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -H 'Origin: https://iaeon.site' -H 'Referer: https://iaeon.site/operations' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"123456\",\"isAdmin\":false}'\r"
+expect "# "
+
+send "echo '=== Frontend URL test completed ==='\r"
+expect "# "
+
+# Check if there are any different endpoints being used by frontend
+send "tail -n 50 /var/log/nginx/access.log | grep -E '(login|auth)'\r"
+expect "# "
+
+send "exit\r"
+expect eof

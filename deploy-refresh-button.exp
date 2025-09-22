@@ -1,0 +1,47 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "*password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "*# " {
+        puts "\n🚀 DEPLOY COM BOTÃO DE REFRESH..."
+
+        # Copiar novo build
+        send "cd /root/eon/client && cp -r build/* /var/www/html/\r"
+        expect "*# "
+
+        # Verificar novo arquivo
+        send "ls -la /var/www/html/static/js/main*.js\r"
+        expect "*# "
+
+        # Reiniciar nginx
+        send "systemctl reload nginx\r"
+        expect "*# "
+
+        puts "\n✅ DEPLOY CONCLUÍDO COM BOTÃO DE REFRESH!"
+        puts "🌐 Teste: https://iaeon.site/operations"
+        puts ""
+        puts "🎯 NOVO RECURSO:"
+        puts "   ✓ Botão de refresh (🔄) ao lado de 'Selecionar Bot'"
+        puts "   ✓ Clique no botão para recarregar bots manualmente"
+        puts "   ✓ Logs detalhados no console do navegador"
+        puts ""
+        puts "🔍 COMO DEBUGAR:"
+        puts "   1. Faça login como cliente"
+        puts "   2. Conecte com Deriv"
+        puts "   3. Abra DevTools (F12) e vá na aba Console"
+        puts "   4. Clique no botão de refresh dos bots"
+        puts "   5. Verifique os logs para identificar o problema"
+
+        send "exit\r"
+    }
+}
+
+expect eof

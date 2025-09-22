@@ -1,0 +1,6 @@
+#!/usr/bin/expect -f
+
+spawn ssh root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+interact

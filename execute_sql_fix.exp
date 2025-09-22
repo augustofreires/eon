@@ -1,0 +1,95 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        expect {
+            "password:" {
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+            "Enter passphrase for key" {
+                send "\r"
+                expect "password:"
+                send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+            }
+        }
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+
+# Upload the SQL file
+send "cat > /tmp/fix_users_table.sql << 'EOF'\r"
+expect "> "
+send "-- Fix PostgreSQL users table structure for EON Platform\r"
+expect "> "
+send "-- This script addresses the \"errorMissingColumn\" error by adding missing columns\r"
+expect "> "
+send "\r"
+expect "> "
+send "BEGIN;\r"
+expect "> "
+send "\r"
+expect "> "
+send "-- 1. Rename password column to password_hash (most critical fix)\r"
+expect "> "
+send "ALTER TABLE users RENAME COLUMN password TO password_hash;\r"
+expect "> "
+send "\r"
+expect "> "
+send "-- 2. Add status column with default value\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';\r"
+expect "> "
+send "\r"
+expect "> "
+send "-- 3. Add all Deriv OAuth related columns\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_access_token VARCHAR(500);\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_account_id VARCHAR(100);\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_connected BOOLEAN DEFAULT false;\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_email VARCHAR(255);\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_currency VARCHAR(10);\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_country VARCHAR(10);\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_is_virtual BOOLEAN DEFAULT false;\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_fullname VARCHAR(255);\r"
+expect "> "
+send "ALTER TABLE users ADD COLUMN IF NOT EXISTS deriv_accounts_tokens TEXT;\r"
+expect "> "
+send "\r"
+expect "> "
+send "-- 4. Update existing users to have active status\r"
+expect "> "
+send "UPDATE users SET status = 'active' WHERE status IS NULL;\r"
+expect "> "
+send "\r"
+expect "> "
+send "COMMIT;\r"
+expect "> "
+send "EOF\r"
+expect "# "
+
+# Execute the SQL file
+send "sudo -u postgres psql -d eon_platform -f /tmp/fix_users_table.sql\r"
+expect "# "
+
+# Verify the changes
+send "sudo -u postgres psql -d eon_platform -c \"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position;\"\r"
+expect "# "
+
+send "exit\r"
+expect eof
