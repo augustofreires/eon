@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+// Debug timestamp: 20250919164854
 import {
   Box,
   Card,
@@ -6,9 +7,7 @@ import {
   Typography,
   Button,
   CircularProgress,
-  FormControl,
-  Select,
-  MenuItem,
+  IconButton,
   Chip,
   Dialog,
   DialogTitle,
@@ -19,11 +18,18 @@ import {
   FormControlLabel,
   Grid,
   Divider,
-  InputAdornment
+  InputAdornment,
+  Menu,
+  MenuItem,
+  // Alert,
+  // Select,
+  // FormControl,
+  // InputLabel
 } from '@mui/material';
 import {
   PlayArrow,
   Stop,
+  Pause,
   SmartToy,
   AccountBalance,
   Person,
@@ -33,26 +39,20 @@ import {
   TrendingUp,
   TrendingDown,
   AttachMoney,
-  Speed,
-  Refresh
+  // Speed,
+  Refresh,
+  // NotificationsActive,
+  // Info,
+  ExpandMore
+  // AccountBalanceWallet,
+  // ShowChart
 } from '@mui/icons-material';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine
-} from 'recharts';
+import DerivTradingChart from '../components/DerivTradingChart';
+import CompactOperationsPanel from '../components/CompactOperationsPanel';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import DerivAccountPanel from '../components/DerivAccountPanel';
-import EnhancedDerivAccountPanel from '../components/EnhancedDerivAccountPanel';
-import AdvancedTradingPanel from '../components/AdvancedTradingPanel';
 import useDerivOperations from '../hooks/useDerivOperations';
 
 interface Bot {
@@ -64,11 +64,9 @@ interface Bot {
   image_url?: string;
 }
 
-interface ChartData {
-  time: string;
-  price: number;
-  timestamp: number;
-}
+// ChartData interface moved to DerivTradingChart component
+
+// Market symbols and interfaces moved to DerivTradingChart component
 
 const OperationsPage: React.FC = () => {
   const { t } = useLanguage();
@@ -76,32 +74,55 @@ const OperationsPage: React.FC = () => {
   const {
     isConnected: derivWSConnected,
     currentPrice: livePrice,
-    subscribeTicks
+    subscribeTicks,
+    botStatus,
+    operationLogs,
+    tradingStats,
+    startBot,
+    stopBot,
+    pauseBot,
+    resumeBot,
+    formatCurrency,
+    formatProfit
   } = useDerivOperations();
-  const [derivConnected, setDerivConnected] = useState(false);
+  // Use connected state from auth context and operations hook
+  const derivConnected = Boolean(user?.deriv_connected && derivWSConnected);
+
+  // DEBUG: Comprehensive state logging
+  useEffect(() => {
+    console.log('🔍 STATE DEBUG - OperationsPage account state:', {
+      'user?.deriv_connected': user?.deriv_connected,
+      'derivWSConnected': derivWSConnected,
+      'derivConnected (computed)': derivConnected,
+      'currentAccount': currentAccount ? {
+        loginid: currentAccount.loginid,
+        currency: currentAccount.currency,
+        is_virtual: currentAccount.is_virtual
+      } : 'NULL - PROBLEMA!',
+      'availableAccounts count': availableAccounts?.length || 0,
+      'accountData balance': accountData?.account?.balance,
+      'accountData currency': accountData?.account?.currency,
+      'user account id': user?.deriv_account_id,
+      'user currency': user?.deriv_currency,
+      'display will show': derivConnected && currentAccount ? `${currentAccount.loginid} (${currentAccount.currency})` : 'Não conectado',
+      'timestamp': new Date().toISOString()
+    });
+
+    // Alert se derivConnected mas sem currentAccount
+    if (derivConnected && !currentAccount && availableAccounts.length === 0) {
+      console.warn('⚠️ PROBLEMA: Deriv conectado mas sem contas disponíveis!');
+    }
+  }, [user?.deriv_connected, derivWSConnected, derivConnected, user, currentAccount, availableAccounts, accountData]);
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
   const [loadingBots, setLoadingBots] = useState(false);
+  const [accountMenuAnchor, setAccountMenuAnchor] = useState<null | HTMLElement>(null);
+  const [accountData, setAccountData] = useState<any>(null);
+  const [loadingAccountInfo, setLoadingAccountInfo] = useState(false);
   
-  // Garantir que availableBots seja sempre um array e resetar flag se vazio
-  React.useEffect(() => {
-    if (!Array.isArray(availableBots)) {
-      console.warn('⚠️ availableBots não é um array, corrigindo...', availableBots);
-      setAvailableBots([]);
-      botsLoadedRef.current = false;
-    } else if (availableBots.length === 0 && botsLoadedRef.current) {
-      // Reset flag se bots foram limpos
-      console.log('🔄 Bots foram limpos, resetando flag de carregamento');
-      botsLoadedRef.current = false;
-    }
-  }, [availableBots]);
-  const [operationRunning, setOperationRunning] = useState(false);
-  const [chartData, setChartData] = useState<ChartData[]>([]);
-  const [wsConnection, setWsConnection] = useState<WebSocket | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState('R_100');
-  const [isConnectingWs, setIsConnectingWs] = useState(false);
   const [currentPrice, setCurrentPrice] = useState(livePrice || 1154.7);
-  const [useEnhancedComponents, setUseEnhancedComponents] = useState(true);
+  const [chartConnectionStatus, setChartConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const [derivAffiliateLink, setDerivAffiliateLink] = useState('');
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [botConfig, setBotConfig] = useState({
@@ -117,102 +138,70 @@ const OperationsPage: React.FC = () => {
   });
   const [isInitialized, setIsInitialized] = useState(false);
 
-  const wsRef = useRef<WebSocket | null>(null);
   const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const initializationRef = useRef<boolean>(false); // CORREÇÃO: Controle de inicialização
-  const botsLoadedRef = useRef<boolean>(false); // Prevenir múltiplos carregamentos
+  const initializationRef = useRef<boolean>(false);
+  const botsLoadedRef = useRef<boolean>(false);
 
-  // SOLUÇÃO 1: Função robusta de carregamento de bots com prevenção de tree-shaking
+  // Função simplificada de carregamento de bots
   const loadAvailableBots = useCallback(async (forceRefresh = false) => {
     try {
       setLoadingBots(true);
-      console.log('🔄 Iniciando carregamento de bots...');
-
       const token = localStorage.getItem('token');
       if (!token) {
-        console.warn('❌ Token não encontrado para carregar bots');
         setAvailableBots([]);
         return [];
       }
 
-      // Verificar se já temos bots e não é refresh forçado
       if (!forceRefresh && botsLoadedRef.current && availableBots.length > 0) {
-        console.log(`⏭️ ${availableBots.length} bots já carregados, pulando...`);
         setLoadingBots(false);
         return availableBots;
       }
 
-      console.log('📡 Fazendo requisição para /api/bots...');
       const response = await axios.get('/api/bots', {
         headers: { 'Authorization': `Bearer ${token}` },
-        timeout: 10000 // 10 segundos timeout
+        timeout: 10000
       });
 
-      console.log('📦 Resposta recebida:', response.data);
-
-      // Backend retorna array direto (verificado em routes/bots.js linha 75)
-      const botsData = Array.isArray(response.data) ? response.data : [];
-      console.log(`✅ ${botsData.length} bots processados:`, botsData);
-
+      const botsData = Array.isArray(response.data.bots) ? response.data.bots : [];
       setAvailableBots(botsData);
-
-      // Marcar como carregado apenas após sucesso
       botsLoadedRef.current = true;
-
-      // Log detalhado para debug em produção
-      console.log('🎯 Estado atualizado - Bots disponíveis:', {
-        total: botsData.length,
-        bots: botsData.map(bot => ({ id: bot.id, name: bot.name }))
-      });
-
       return botsData;
     } catch (error: any) {
-      console.error('❌ ERRO ao carregar bots:', {
-        status: error.response?.status,
-        message: error.message,
-        data: error.response?.data
-      });
-
-      // Garantir que sempre temos um array vazio em caso de erro
       setAvailableBots([]);
-
-      // Reset flag para permitir retry
       botsLoadedRef.current = false;
-
-      // Mostrar toast de erro apenas se não for erro de autenticação
       if (error.response?.status !== 401) {
         toast.error('Erro ao carregar bots disponíveis');
       }
-
       return [];
     } finally {
       setLoadingBots(false);
     }
-  }, []); // CORREÇÃO: Remover availableBots das dependências para evitar loop infinito
+  }, []);
 
-  // ANTI-TREE-SHAKING: Expor função globalmente para garantir que não seja removida
-  React.useEffect(() => {
-    (window as any).loadAvailableBots = loadAvailableBots;
-    (window as any).debugBotState = () => {
-      console.log('🔍 DEBUG: Bot State', {
-        availableBots: availableBots.length,
-        loadingBots,
-        botsLoadedRef: botsLoadedRef.current,
-        derivConnected,
-        isInitialized
-      });
-    };
-    return () => {
-      delete (window as any).loadAvailableBots;
-      delete (window as any).debugBotState;
-    };
-  }, [loadAvailableBots, availableBots.length, loadingBots, derivConnected, isInitialized]);
+  // Função para carregar informações da conta
+  const loadAccountInfo = useCallback(async () => {
+    if (!derivConnected) return;
+
+    try {
+      setLoadingAccountInfo(true);
+      const response = await axios.get('/api/auth/deriv/account-info');
+      setAccountData(response.data);
+
+      if (response.data.warning) {
+        toast.error(response.data.warning);
+      }
+    } catch (error: any) {
+      console.error('Erro ao carregar informações da conta:', error);
+      toast.error('Erro ao carregar informações da conta Deriv');
+    } finally {
+      setLoadingAccountInfo(false);
+    }
+  }, [derivConnected]);
 
   const loadDerivConfig = useCallback(async () => {
     try {
       const response = await axios.get('/api/auth/deriv-affiliate-link');
       setDerivAffiliateLink(response.data.affiliate_link);
-      // SOLUÇÃO 2: Removido log desnecessário que aparecia no console
     } catch (error) {
       console.error('Erro ao carregar link Deriv:', error);
     }
@@ -248,7 +237,6 @@ const OperationsPage: React.FC = () => {
 
       if (response.data.success) {
         console.log('✅ OAuth processado com sucesso:', response.data);
-        setDerivConnected(true);
 
         // Salvar no localStorage
         localStorage.setItem('deriv_connected', 'true');
@@ -262,7 +250,7 @@ const OperationsPage: React.FC = () => {
 
         // Atualizar contexto de usuário
         if (user && updateUser) {
-          updateUser({
+          const updatedUser = {
             ...user,
             deriv_connected: true,
             deriv_account_id: response.data.account_id,
@@ -270,7 +258,15 @@ const OperationsPage: React.FC = () => {
             deriv_currency: response.data.deriv_currency,
             deriv_is_virtual: response.data.is_virtual,
             deriv_fullname: response.data.deriv_fullname
+          };
+
+          console.log('✅ OAuth: Atualizando contexto de usuário:', {
+            before: user,
+            after: updatedUser,
+            deriv_connected_changed: user.deriv_connected !== updatedUser.deriv_connected
           });
+
+          updateUser(updatedUser);
         }
 
         // NOTIFICATION CONTROL: Only show notification once per OAuth session
@@ -286,9 +282,31 @@ const OperationsPage: React.FC = () => {
           console.log('🔇 Notificação já exibida ou OAuth já processado, pulando...');
         }
 
-        // CORREÇÃO: Não chamar fetchAccounts aqui pois o AuthContext já gerencia as contas
-        // e o DerivAccountPanel vai carregá-las quando necessário
-        console.log('ℹ️ OAuth processado, contas serão carregadas automaticamente pelo AuthContext');
+        // Carregar bots e configurações após conexão bem-sucedida
+        console.log('ℹ️ OAuth processado, carregando bots e configurações...');
+
+        // Forçar reconexão do WebSocket após OAuth
+        setTimeout(async () => {
+          try {
+            console.log('🔄 OAuth: Iniciando processo de reconexão pós-OAuth...');
+
+            // 1. Aguardar que o contexto seja atualizado
+            await Promise.all([
+              loadDerivConfig(),
+              loadAvailableBots(),
+              fetchAccounts('oauth-callback') // Force account fetch
+            ]);
+
+            console.log('✅ OAuth: Bots e configurações carregados');
+
+            // 2. Force trigger useDerivOperations WebSocket connection
+            // This will be handled by the useEffect in useDerivOperations that watches user.deriv_connected
+            console.log('🔄 OAuth: WebSocket será reconectado automaticamente via useDerivOperations');
+
+          } catch (error) {
+            console.error('❌ OAuth: Erro ao carregar configurações:', error);
+          }
+        }, 1500); // Increased timeout to ensure context update
       } else {
         throw new Error(response.data.error || 'Erro ao processar OAuth');
       }
@@ -300,6 +318,38 @@ const OperationsPage: React.FC = () => {
       throw error;
     }
   }, [user, updateUser]);
+
+  // Force state refresh function
+  const forceStateRefresh = useCallback(async () => {
+    console.log('🔄 FORCE REFRESH: Iniciando refresh completo do estado...');
+    try {
+      // 1. Check deriv connection status
+      const connected = await checkDerivConnection(false);
+
+      if (connected) {
+        // 2. Always fetch accounts to ensure they're loaded
+        console.log('🔄 FORCE REFRESH: Buscando contas...');
+        await fetchAccounts('force-refresh');
+
+        // 3. Load account info
+        console.log('🔄 FORCE REFRESH: Carregando informações da conta...');
+        await loadAccountInfo();
+
+        // 4. Give a moment for state to update
+        setTimeout(() => {
+          console.log('🔄 FORCE REFRESH: Estado final após refresh:', {
+            currentAccount: currentAccount?.loginid || 'NULL',
+            availableAccounts: availableAccounts.length,
+            accountData: accountData ? 'LOADED' : 'NULL'
+          });
+        }, 1000);
+      }
+
+      console.log('✅ FORCE REFRESH: Estado atualizado completamente');
+    } catch (error) {
+      console.error('❌ FORCE REFRESH: Erro durante refresh:', error);
+    }
+  }, [fetchAccounts, loadAccountInfo, currentAccount, availableAccounts, accountData]);
 
   const checkDerivConnection = async (silent = false) => {
     try {
@@ -324,7 +374,7 @@ const OperationsPage: React.FC = () => {
         localStorage.removeItem('deriv_account_data');
       }
 
-      setDerivConnected(isConnected);
+      // derivConnected is now computed from user.deriv_connected and isConnected
       if (!silent) {
         console.log('✅ Status Deriv verificado:', {
           connected: isConnected,
@@ -348,7 +398,6 @@ const OperationsPage: React.FC = () => {
       // Limpar localStorage em caso de erro
       localStorage.removeItem('deriv_connected');
       localStorage.removeItem('deriv_account_data');
-      setDerivConnected(false);
       return false;
     }
   };
@@ -358,46 +407,63 @@ const OperationsPage: React.FC = () => {
       toast.error('Selecione um bot antes de iniciar a operação');
       return;
     }
-    
+
     if (!derivConnected) {
       toast.error('Conecte sua conta Deriv antes de iniciar operações');
       return;
     }
-    
-    try {
-      console.log('🚀 Iniciando operação com bot:', selectedBot.name);
-      setOperationRunning(true);
-      
-      // Enviar configurações do bot para o backend
-      const response = await axios.post('/api/operations/start', {
-        botId: selectedBot.id,
-        config: botConfig
-      });
-      
-      toast.success('Operação iniciada com sucesso!');
-      console.log('✅ Operação iniciada:', response.data);
-      
-    } catch (error: any) {
-      console.error('Erro ao iniciar operação:', error);
-      toast.error(error.response?.data?.error || 'Erro ao iniciar operação');
-      setOperationRunning(false);
-    }
+
+    await startBot(selectedBot.id, botConfig);
   };
 
   const handleStopOperation = async () => {
-    try {
-      await axios.post('/api/operations/stop');
-      setOperationRunning(false);
-      toast.success('Operação parada com sucesso!');
-    } catch (error: any) {
-      console.error('Erro ao parar operação:', error);
-      toast.error(error.response?.data?.error || 'Erro ao parar operação');
-    }
+    await stopBot();
+  };
+
+  const handlePauseOperation = async () => {
+    await pauseBot();
+  };
+
+  const handleResumeOperation = async () => {
+    await resumeBot();
   };
 
   const handleSaveConfig = () => {
     setConfigModalOpen(false);
     toast.success('Configurações salvas!');
+  };
+
+  const handleAccountMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setAccountMenuAnchor(event.currentTarget);
+  };
+
+  const handleAccountMenuClose = () => {
+    setAccountMenuAnchor(null);
+  };
+
+  const handleSwitchAccount = async (account: any) => {
+    try {
+      setLoadingAccountInfo(true);
+      handleAccountMenuClose();
+      await switchAccount(account, true);
+      setTimeout(() => {
+        loadAccountInfo();
+      }, 1500);
+    } catch (error: any) {
+      console.error('Erro ao trocar conta:', error);
+      toast.error('Erro ao trocar conta Deriv');
+    } finally {
+      setLoadingAccountInfo(false);
+    }
+  };
+
+  const formatBalance = (balance: number, currency: string) => {
+    return `$ ${balance.toFixed(2)} ${currency}`;
+  };
+
+  const formatProfitLoss = (amount: number) => {
+    const sign = amount >= 0 ? '+' : '';
+    return `${sign}$ ${amount.toFixed(2)}`;
   };
 
   const handleConnectDeriv = async () => {
@@ -423,109 +489,12 @@ const OperationsPage: React.FC = () => {
     }
   };
 
-  // CORREÇÃO: WebSocket com cleanup adequado
-  const connectToDerivWS = useCallback(async () => {
-    // Prevenir múltiplas conexões
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('⏭️ WebSocket já conectado, pulando...');
-      return;
-    }
 
-    // Limpar conexão anterior se existir
-    if (wsRef.current) {
-      console.log('🧹 Fechando conexão WebSocket anterior...');
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    setIsConnectingWs(true);
-    console.log('🌐 Iniciando conexão WebSocket...');
-
-    try {
-      const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=82349');
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('✅ Conectado ao WebSocket da Deriv');
-        setWsConnection(ws);
-        setIsConnectingWs(false);
-
-        const request = {
-          ticks: selectedSymbol,
-          subscribe: 1,
-          req_id: Date.now()
-        };
-
-        ws.send(JSON.stringify(request));
-        console.log('📡 Solicitação enviada para:', selectedSymbol);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const response = JSON.parse(event.data);
-
-          if (response.tick) {
-            const tickData = {
-              time: new Date(response.tick.epoch * 1000).toLocaleTimeString('pt-BR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-              }),
-              price: response.tick.quote,
-              timestamp: response.tick.epoch * 1000
-            };
-
-            setCurrentPrice(tickData.price);
-
-            setChartData(prev => {
-              const newData = [...prev, tickData].slice(-50);
-              return newData;
-            });
-          }
-
-          if (response.error) {
-            console.error('❌ Erro no WebSocket:', response.error.message);
-          }
-        } catch (error) {
-          console.error('❌ Erro ao processar dados:', error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('❌ Erro no WebSocket:', error);
-        setIsConnectingWs(false);
-      };
-
-      ws.onclose = (event) => {
-        console.log('🔌 WebSocket fechado:', event.code, event.reason);
-        setWsConnection(null);
-        setIsConnectingWs(false);
-
-        // Só reconectar se não foi fechamento intencional
-        if (event.code !== 1000 && wsRef.current === ws) {
-          setTimeout(() => {
-            console.log('🔄 Tentando reconectar...');
-            connectToDerivWS();
-          }, 5000);
-        }
-      };
-
-    } catch (error) {
-      console.error('❌ Erro ao conectar WebSocket:', error);
-      setIsConnectingWs(false);
-    }
-  }, [selectedSymbol]);
-
-  // CORREÇÃO: useEffect principal otimizado
+  // useEffect principal simplificado
   useEffect(() => {
-    // Prevenir múltiplas inicializações
-    if (initializationRef.current) {
-      console.log('⏭️ Inicialização já em andamento, pulando...');
-      return;
-    }
+    if (initializationRef.current) return;
 
     initializationRef.current = true;
-    console.log('🚀 OperationsPage: Inicializando...', new Date().toISOString());
 
     const initializeOperationsPage = async () => {
       try {
@@ -544,8 +513,6 @@ const OperationsPage: React.FC = () => {
         }
 
         if (oauthAccounts.length > 0 && !sessionStorage.getItem('oauth_callback_processed')) {
-          console.log(`🎉 OAuth: ${oauthAccounts.length} contas detectadas`);
-
           try {
             const primaryAccount = oauthAccounts.find(acc => !acc.account.startsWith('VR')) || oauthAccounts[0];
             await processOAuthCallback(primaryAccount.token, primaryAccount.account, urlParams.get('state'));
@@ -553,38 +520,28 @@ const OperationsPage: React.FC = () => {
             sessionStorage.setItem('oauth_callback_processed', 'true');
             window.history.replaceState({}, document.title, '/operations');
           } catch (oauthError) {
-            console.error('❌ OAuth erro:', oauthError);
+            console.error('OAuth erro:', oauthError);
             toast.error('Erro ao processar autorização');
           }
         }
 
-        // Restaurar estado local
-        const savedDerivConnected = localStorage.getItem('deriv_connected');
-        if (savedDerivConnected === 'true') {
-          setDerivConnected(true);
-        }
+        // Estado será automaticamente sincronizado via user.deriv_connected e isConnected
 
-        // SOLUÇÃO 3: Carregar dados iniciais (bots são carregados apenas quando Deriv conectar)
-        console.log('🔄 Carregando configurações iniciais...');
+        // Carregar configurações iniciais
         await Promise.all([
           loadDerivConfig(),
           checkDerivConnection(false)
         ]);
 
-        // Conectar WebSocket
-        await connectToDerivWS();
-
         setIsInitialized(true);
-        console.log('✅ Inicialização concluída');
-
       } catch (error) {
-        console.error('❌ Erro na inicialização:', error);
+        console.error('Erro na inicialização:', error);
       }
     };
 
     initializeOperationsPage();
 
-    // CORREÇÃO: Verificação de status controlada
+    // Verificação de status periódica
     if (!statusCheckIntervalRef.current) {
       statusCheckIntervalRef.current = setInterval(() => {
         checkDerivConnection(true);
@@ -592,62 +549,36 @@ const OperationsPage: React.FC = () => {
     }
 
     return () => {
-      console.log('🧹 Cleanup OperationsPage...');
-
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-
       if (statusCheckIntervalRef.current) {
         clearInterval(statusCheckIntervalRef.current);
         statusCheckIntervalRef.current = null;
       }
-
       initializationRef.current = false;
     };
-  }, []); // CORREÇÃO: Array de dependências vazio para executar apenas uma vez
+  }, []);
 
-  // Sincronizar com mudanças no contexto de autenticação
-  useEffect(() => {
-    if (user?.deriv_connected && !derivConnected) {
-      console.log('🔄 Sincronizando estado Deriv com contexto de autenticação...');
-      setDerivConnected(true);
-    } else if (!user?.deriv_connected && derivConnected) {
-      console.log('🔄 Desconectando Deriv conforme contexto de autenticação...');
-      setDerivConnected(false);
-    }
-  }, [user?.deriv_connected, derivConnected]);
+  // derivConnected is now computed automatically
 
-  // SOLUÇÃO 4: Carregar bots quando Deriv conectar com controle adequado
+  // Carregar bots quando Deriv conectar
   useEffect(() => {
     if (derivConnected && isInitialized && !botsLoadedRef.current) {
-      console.log('🤖 Deriv conectado e app inicializado! Carregando bots disponíveis...');
-
-      // Usar timeout para garantir que o estado esteja estabilizado
       const timeoutId = setTimeout(() => {
-        loadAvailableBots(false); // false = não forçar se já tem bots
+        loadAvailableBots(false);
       }, 500);
-
       return () => clearTimeout(timeoutId);
     }
-  }, [derivConnected, isInitialized]); // CORREÇÃO: Remover loadAvailableBots das dependências
+  }, [derivConnected, isInitialized]);
 
-  // SOLUÇÃO 5: Fallback automático - tentar carregar bots a cada 30 segundos se não tiver nenhum
+  // Carregar informações da conta quando conectar
   useEffect(() => {
-    if (derivConnected && isInitialized && !loadingBots && availableBots.length === 0 && !botsLoadedRef.current) {
-      console.log('🔄 Iniciando fallback: Tentativa automática de carregar bots em 30s...');
-
-      const intervalId = setInterval(() => {
-        if (availableBots.length === 0 && !botsLoadedRef.current) {
-          console.log('🔄 Fallback: Tentando carregar bots automaticamente...');
-          loadAvailableBots(true);
-        }
-      }, 30000); // 30 segundos
-
-      return () => clearInterval(intervalId);
+    if (derivConnected && isInitialized) {
+      loadAccountInfo();
+      // Buscar contas se não há contas carregadas
+      if (availableAccounts.length === 0) {
+        fetchAccounts('operations-page-effect');
+      }
     }
-  }, [derivConnected, isInitialized, loadingBots, availableBots.length]); // CORREÇÃO: Remover loadAvailableBots das dependências
+  }, [derivConnected, isInitialized, loadAccountInfo, fetchAccounts, availableAccounts.length]);
 
   // Atualizar preço atual quando há dados do WebSocket
   useEffect(() => {
@@ -663,31 +594,22 @@ const OperationsPage: React.FC = () => {
     }
   }, [derivWSConnected, selectedSymbol, subscribeTicks]);
 
-  // REMOVED: Duplicate OAuth processing useEffect that was causing notification spam
-  // OAuth processing is now handled only once in the main initialization useEffect
-
+  // Atualizar status de conexão do gráfico
   useEffect(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      setChartData([]);
-      
-      const request = {
-        ticks: selectedSymbol,
-        subscribe: 1,
-        req_id: Date.now()
-      };
-      
-      wsRef.current.send(JSON.stringify(request));
-      console.log('Mudando para símbolo:', selectedSymbol);
+    if (derivConnected) {
+      setChartConnectionStatus('connected');
+    } else {
+      setChartConnectionStatus('disconnected');
     }
-  }, [selectedSymbol]);
+  }, [derivConnected]);
 
   return (
-    <Box sx={{ 
-      p: { xs: 0.25, md: 3 },
+    <Box sx={{
+      p: { xs: 1, md: 2 },
       minHeight: '100vh',
       background: 'linear-gradient(135deg, rgba(10, 25, 41, 0.95) 0%, rgba(15, 35, 55, 0.9) 100%)'
     }}>
-      {/* Header de status aprimorado */}
+      {/* Header de status */}
       <Box sx={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -696,6 +618,17 @@ const OperationsPage: React.FC = () => {
         pb: 1,
         borderBottom: '1px solid rgba(0, 212, 170, 0.2)'
       }}>
+        <Typography variant="h4" sx={{
+          color: '#ffffff',
+          fontWeight: 'bold',
+          background: 'linear-gradient(135deg, #00d4aa 0%, #00b89c 100%)',
+          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}>
+          EON PRO
+        </Typography>
+
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Box sx={{
@@ -711,6 +644,14 @@ const OperationsPage: React.FC = () => {
             }}>
               DERIV {derivConnected ? 'ONLINE' : 'OFFLINE'}
             </Typography>
+            {/* Debug refresh button - v2 */}
+            <IconButton
+              onClick={forceStateRefresh}
+              sx={{ p: 0.5, color: '#888', fontSize: '0.7rem' }}
+              title="Force refresh state (debug v2)"
+            >
+              <Refresh sx={{ fontSize: '0.8rem' }} />
+            </IconButton>
           </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -718,582 +659,286 @@ const OperationsPage: React.FC = () => {
               width: 8,
               height: 8,
               borderRadius: '50%',
-              backgroundColor: derivWSConnected ? '#00d4aa' : '#ff9800'
+              backgroundColor: chartConnectionStatus === 'connected' ? '#00d4aa' : chartConnectionStatus === 'connecting' ? '#ff9800' : '#f44336'
             }} />
             <Typography variant="caption" sx={{
-              color: derivWSConnected ? '#00d4aa' : '#ff9800',
+              color: chartConnectionStatus === 'connected' ? '#00d4aa' : chartConnectionStatus === 'connecting' ? '#ff9800' : '#f44336',
               fontWeight: 600,
               fontSize: '0.75rem'
             }}>
-              WEBSOCKET {derivWSConnected ? 'CONECTADO' : 'DESCONECTADO'}
+              CHART {chartConnectionStatus === 'connected' ? 'ON' : chartConnectionStatus === 'connecting' ? 'CONNECTING' : 'OFF'}
             </Typography>
           </Box>
         </Box>
+      </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="caption" sx={{ color: '#b0b0b0' }}>
-            Modo:
-          </Typography>
-          <Chip
-            label={useEnhancedComponents ? 'Avançado' : 'Padrão'}
-            size="small"
-            onClick={() => setUseEnhancedComponents(!useEnhancedComponents)}
-            sx={{
-              fontSize: '0.65rem',
-              height: '20px',
-              cursor: 'pointer',
-              bgcolor: useEnhancedComponents ? 'rgba(0, 212, 170, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-              color: useEnhancedComponents ? '#00d4aa' : '#ffffff'
+      {/* Layout Principal - 2 Seções */}
+      <Box sx={{
+        display: 'flex',
+        flexDirection: { xs: 'column', lg: 'row' },
+        gap: 2,
+        height: { xs: 'auto', lg: 'calc(100vh - 120px)' },
+        pb: { xs: 2, lg: 0 },
+        position: 'relative'
+      }}>
+
+        {/* SEÇÃO 1: GRÁFICO - 65% */}
+        <Box sx={{
+          width: { xs: '100%', lg: '65%' },
+          height: { xs: '400px', lg: '100%' },
+          position: 'relative',
+          zIndex: 0
+        }}>
+          <DerivTradingChart
+            symbol={selectedSymbol}
+            onSymbolChange={setSelectedSymbol}
+            height={{ xs: 400, lg: '100%' }}
+            showControls={true}
+            theme="dark"
+            onPriceUpdate={(price) => {
+              setCurrentPrice(price);
+              // Atualizar hook de operações se necessário
             }}
+          />
+        </Box>
+
+        {/* SEÇÃO 2: OPERAÇÕES - 35% */}
+        <Box sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          width: { xs: '100%', lg: '35%' },
+          height: { xs: 'auto', lg: '100%' },
+          overflow: { xs: 'visible', lg: 'auto' }
+        }}>
+
+          {/* Painel de Conta */}
+          <Card sx={{
+            borderRadius: '16px',
+            background: 'rgba(25, 45, 65, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(0, 212, 170, 0.2)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            flexShrink: 0,
+            position: { xs: 'relative', lg: 'static' },
+            zIndex: { xs: 1, lg: 'auto' }
+          }}>
+            <CardContent sx={{ p: 2 }}>
+              <Grid container spacing={2} alignItems="center">
+                {/* Account Info */}
+                <Grid item xs={12} lg={8}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <AccountBalance sx={{ color: '#00d4aa', fontSize: '2rem' }} />
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ color: '#b0b0b0' }}>
+                          {derivConnected ? (currentAccount?.is_virtual ? 'Conta Virtual' : 'Conta Real') : 'Não Conectado'}
+                        </Typography>
+                        {derivConnected && currentAccount && (
+                          <>
+                            <Chip
+                              label={currentAccount.loginid}
+                              size="small"
+                              sx={{
+                                bgcolor: 'rgba(0, 212, 170, 0.2)',
+                                color: '#00d4aa',
+                                fontSize: '0.7rem',
+                                height: '18px',
+                                cursor: 'pointer'
+                              }}
+                              onClick={handleAccountMenuOpen}
+                            />
+                            <IconButton
+                              onClick={handleAccountMenuOpen}
+                              sx={{ p: 0, color: '#b0b0b0' }}
+                            >
+                              <ExpandMore sx={{ fontSize: '1rem' }} />
+                            </IconButton>
+                          </>
+                        )}
+                      </Box>
+                      <Typography variant="h5" sx={{ color: '#ffffff', fontWeight: 'bold' }}>
+                        {derivConnected && currentAccount
+                          ? (accountData?.account?.balance !== undefined
+                              ? formatBalance(accountData.account.balance, currentAccount.currency)
+                              : `Carregando... (${currentAccount.currency})`
+                            )
+                          : '$0,00 USD'
+                        }
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Grid>
+
+                {/* Profit/Loss */}
+                <Grid item xs={12} lg={4}>
+                  <Box sx={{ textAlign: { xs: 'left', lg: 'right' } }}>
+                    <Typography variant="caption" sx={{ color: '#b0b0b0', display: 'block' }}>
+                      P&L Hoje
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: { xs: 'flex-start', lg: 'flex-end' } }}>
+                      {(accountData?.profit_loss?.today || botStatus.profitLoss || 0) >= 0 ? (
+                        <TrendingUp sx={{ color: '#4caf50', fontSize: '1.2rem' }} />
+                      ) : (
+                        <TrendingDown sx={{ color: '#f44336', fontSize: '1.2rem' }} />
+                      )}
+                      <Typography variant="h6" sx={{
+                        color: (accountData?.profit_loss?.today || botStatus.profitLoss || 0) >= 0 ? '#4caf50' : '#f44336',
+                        fontWeight: 'bold'
+                      }}>
+                        {accountData?.profit_loss
+                          ? formatProfitLoss(accountData.profit_loss.today || 0)
+                          : formatProfitLoss(botStatus.profitLoss || 0)
+                        }
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Grid>
+              </Grid>
+
+              {/* Performance Stats */}
+              <Divider sx={{ my: 2, borderColor: 'rgba(0, 212, 170, 0.2)' }} />
+              <Box sx={{
+                display: 'flex',
+                justifyContent: 'space-around',
+                gap: 2
+              }}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="caption" sx={{ color: '#4caf50', display: 'block' }}>Vitórias</Typography>
+                  <Chip
+                    label={tradingStats.winningTrades || 0}
+                    size="small"
+                    sx={{
+                      bgcolor: '#4caf50',
+                      color: 'white',
+                      minWidth: '30px',
+                      fontWeight: 'bold'
+                    }}
+                  />
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="caption" sx={{ color: '#f44336', display: 'block' }}>Perdas</Typography>
+                  <Chip
+                    label={tradingStats.losingTrades || 0}
+                    size="small"
+                    sx={{
+                      bgcolor: '#f44336',
+                      color: 'white',
+                      minWidth: '30px',
+                      fontWeight: 'bold'
+                    }}
+                  />
+                </Box>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="caption" sx={{ color: '#ff9800', display: 'block' }}>Total</Typography>
+                  <Chip
+                    label={tradingStats.totalTrades || 0}
+                    size="small"
+                    sx={{
+                      bgcolor: '#ff9800',
+                      color: 'white',
+                      minWidth: '30px',
+                      fontWeight: 'bold'
+                    }}
+                  />
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+
+          {/* Painel Compacto de Operações */}
+          <CompactOperationsPanel
+            derivConnected={derivConnected}
+            onConnectDeriv={handleConnectDeriv}
+            selectedBot={selectedBot}
+            availableBots={availableBots}
+            onBotSelect={setSelectedBot}
+            botStatus={botStatus}
+            onStartOperation={handleStartOperation}
+            onStopOperation={handleStopOperation}
+            onPauseOperation={handlePauseOperation}
+            onResumeOperation={handleResumeOperation}
+            onOpenConfig={() => setConfigModalOpen(true)}
+            operationLogs={operationLogs}
+            loadingBots={loadingBots}
           />
         </Box>
       </Box>
 
-      {/* Layout principal */}
-      <Box sx={{ 
-        display: { xs: 'flex', md: 'grid' },
-        flexDirection: { xs: 'column', md: 'row' },
-        gridTemplateColumns: { md: '1fr 350px' },
-        gap: { xs: 0.25, md: 3 },
-        height: { xs: 'auto', md: 'calc(100vh - 180px)' }
-      }}>
-        
-        {/* Área principal - Gráfico */}
-        <Box sx={{ 
-          order: { xs: 1, md: 1 },
-          flex: { xs: 1, md: 'none' },
-          minHeight: { xs: '400px', md: 'auto' },
-          height: { xs: '60vh', md: 'auto' }
-        }}>
-          <Card sx={{
-            borderRadius: { xs: '0px', md: '12px' },
-            background: 'rgba(25, 45, 65, 0.8)',
+      {/* Menu de Contas */}
+      <Menu
+        anchorEl={accountMenuAnchor}
+        open={Boolean(accountMenuAnchor)}
+        onClose={handleAccountMenuClose}
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(25, 45, 65, 0.95)',
             backdropFilter: 'blur(20px)',
-            border: { xs: 'none', md: '1px solid rgba(0, 212, 170, 0.1)' },
-            height: '100%'
-          }}>
-            <CardContent sx={{ p: { xs: 0, md: 2 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
-              
-              {/* Header do gráfico */}
-              <Box sx={{ 
-                display: { xs: 'none', md: 'flex' }, 
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                mb: 2,
-                pb: 2,
-                borderBottom: '1px solid rgba(0, 212, 170, 0.2)'
-              }}>
-                <Typography variant="h6" sx={{ 
-                  color: '#ffffff', 
-                  fontWeight: 600
+            border: '1px solid rgba(0, 212, 170, 0.2)',
+            borderRadius: 2,
+            minWidth: '250px'
+          }
+        }}
+      >
+        {availableAccounts && availableAccounts.length > 0 ? (
+          availableAccounts.map((account) => (
+            <MenuItem
+              key={account.loginid}
+              onClick={() => account.loginid !== currentAccount?.loginid ? handleSwitchAccount(account) : handleAccountMenuClose()}
+              sx={{
+                color: '#ffffff',
+                bgcolor: account.loginid === currentAccount?.loginid ? 'rgba(0, 212, 170, 0.15)' : 'transparent',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 212, 170, 0.1)'
+                }
+              }}
+            >
+              <Box>
+                <Typography variant="body1" sx={{
+                  color: account.loginid === currentAccount?.loginid ? '#00d4aa' : '#ffffff',
+                  fontWeight: account.loginid === currentAccount?.loginid ? 600 : 400
                 }}>
-                  {selectedBot ? selectedBot.name : 'Gráfico em Tempo Real'}
+                  {account.loginid} {account.loginid === currentAccount?.loginid ? '(Atual)' : ''}
                 </Typography>
-                
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body2" sx={{ color: '#00d4aa' }}>
-                      {selectedSymbol}
-                    </Typography>
-                    {wsConnection && (
-                      <Chip size="small" label="LIVE" color="success" />
-                    )}
-                  </Box>
-                  
-                  <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <Select
-                      value={selectedSymbol}
-                      onChange={(e) => setSelectedSymbol(e.target.value)}
-                      sx={{
-                        color: '#ffffff',
-                        fontSize: '0.875rem',
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          borderColor: 'rgba(0, 212, 170, 0.5)'
-                        },
-                        '&:hover .MuiOutlinedInput-notchedOutline': {
-                          borderColor: '#00d4aa'
-                        }
-                      }}
-                    >
-                      <MenuItem value="R_100">Vol 100</MenuItem>
-                      <MenuItem value="R_75">Vol 75</MenuItem>
-                      <MenuItem value="R_50">Vol 50</MenuItem>
-                      <MenuItem value="R_25">Vol 25</MenuItem>
-                      <MenuItem value="R_10">Vol 10</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Box>
+                <Typography variant="caption" sx={{ color: '#b0b0b0' }}>
+                  {account.is_virtual ? 'Virtual' : 'Real'} • {account.currency}
+                </Typography>
               </Box>
-
-              {/* Header mobile compacto */}
-              <Box sx={{ 
-                display: { xs: 'flex', md: 'none' },
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                p: { xs: '4px', md: 1 },
-                borderBottom: '1px solid rgba(0, 212, 170, 0.2)',
-                background: 'rgba(0, 0, 0, 0.3)',
-                mb: { xs: '2px', md: 1 }
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body2" sx={{ color: '#00d4aa', fontSize: '0.75rem' }}>
-                    {selectedSymbol}
-                  </Typography>
-                  {wsConnection && (
-                    <Chip size="small" label="LIVE" color="success" sx={{ fontSize: '0.6rem', height: '16px' }} />
-                  )}
-                </Box>
-                
-                <FormControl size="small" sx={{ minWidth: 80 }}>
-                  <Select
-                    value={selectedSymbol}
-                    onChange={(e) => setSelectedSymbol(e.target.value)}
-                    sx={{
-                      color: '#ffffff',
-                      fontSize: '0.7rem',
-                      height: '24px',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(0, 212, 170, 0.5)'
-                      },
-                      '&:hover .MuiOutlinedInput-notchedOutline': {
-                        borderColor: '#00d4aa'
-                      },
-                      '& .MuiSelect-select': {
-                        padding: '2px 8px'
-                      }
-                    }}
-                  >
-                    <MenuItem value="R_100" sx={{ fontSize: '0.7rem' }}>Vol 100</MenuItem>
-                    <MenuItem value="R_75" sx={{ fontSize: '0.7rem' }}>Vol 75</MenuItem>
-                    <MenuItem value="R_50" sx={{ fontSize: '0.7rem' }}>Vol 50</MenuItem>
-                    <MenuItem value="R_25" sx={{ fontSize: '0.7rem' }}>Vol 25</MenuItem>
-                    <MenuItem value="R_10" sx={{ fontSize: '0.7rem' }}>Vol 10</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-
-              {/* Status da conexão */}
-              {isConnectingWs && (
-                <Box sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 1, 
-                  mb: { xs: '2px', md: 1 },
-                  p: { xs: '4px', md: 1 },
-                  background: 'rgba(0, 212, 170, 0.1)',
-                  borderRadius: '6px'
-                }}>
-                  <CircularProgress size={16} sx={{ color: '#00d4aa' }} />
-                  <Typography variant="caption" sx={{ color: '#00d4aa' }}>
-                    Conectando aos dados em tempo real...
-                  </Typography>
-                </Box>
-              )}
-
-              {/* Área do gráfico */}
-              <Box sx={{ 
-                background: 'rgba(0, 0, 0, 0.2)',
-                borderRadius: { xs: 0, md: '8px' },
-                height: { xs: '300px', md: '400px' },
-                width: '100%',
-                position: 'relative',
-                overflow: 'hidden'
-              }}>
-                {chartData.length > 0 ? (
-                  <ResponsiveContainer 
-                    width="100%" 
-                    height={window.innerWidth < 600 ? 300 : 400}
-                  >
-                    <LineChart 
-                      data={chartData}
-                      margin={window.innerWidth < 600 ? { top: 8, right: 55, left: 2, bottom: 8 } : { top: 5, right: 50, left: 10, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                      <XAxis 
-                        dataKey="time" 
-                        tick={{ fontSize: 10, fill: 'rgba(255, 255, 255, 0.7)' }}
-                        axisLine={{ stroke: 'rgba(255, 255, 255, 0.3)' }}
-                        tickLine={{ stroke: 'rgba(255, 255, 255, 0.3)' }}
-                        interval="preserveStartEnd"
-                      />
-                      <YAxis 
-                        domain={['dataMin - 0.1', 'dataMax + 0.1']}
-                        tick={{ fontSize: 9, fill: 'rgba(255, 255, 255, 0.7)' }}
-                        axisLine={{ stroke: 'rgba(255, 255, 255, 0.3)' }}
-                        tickLine={{ stroke: 'rgba(255, 255, 255, 0.3)' }}
-                        tickFormatter={(value) => value.toFixed(3)}
-                        tickCount={8}
-                        width={window.innerWidth < 600 ? 50 : 58}
-                        orientation="left"
-                      />
-                      <Tooltip 
-                        contentStyle={{
-                          backgroundColor: 'rgba(25, 45, 65, 0.95)',
-                          border: '1px solid rgba(0, 212, 170, 0.3)',
-                          borderRadius: '6px',
-                          color: '#ffffff',
-                          fontSize: '12px',
-                          padding: '8px 10px'
-                        }}
-                        formatter={(value: any) => [value.toFixed(3), 'Preço']}
-                        labelFormatter={(label: any) => `${label}`}
-                        labelStyle={{ color: '#00d4aa', fontSize: '11px', fontWeight: 'bold' }}
-                      />
-                      <ReferenceLine 
-                        y={currentPrice} 
-                        stroke="#00d4aa" 
-                        strokeDasharray="5 5" 
-                        strokeWidth={2}
-                        label={{ 
-                          value: currentPrice.toFixed(3), 
-                          position: 'right', 
-                          fill: '#00d4aa',
-                          fontSize: 10,
-                          fontWeight: 'bold',
-                          offset: 3
-                        }}
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="price" 
-                        stroke="#00d4aa" 
-                        strokeWidth={2} 
-                        dot={false}
-                        activeDot={{ 
-                          r: 4, 
-                          fill: '#00d4aa',
-                          stroke: '#ffffff',
-                          strokeWidth: 2
-                        }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <Box sx={{ 
-                    display: 'flex', 
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '100%',
-                    gap: 2
-                  }}>
-                    <CircularProgress sx={{ color: '#00d4aa' }} />
-                    <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                      {wsConnection ? 'Aguardando dados do mercado...' : 'Conectando...'}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.5)' }}>
-                      Símbolo: {selectedSymbol}
-                    </Typography>
-                  </Box>
-                )}
-              </Box>
-              
-            </CardContent>
-          </Card>
-        </Box>
-
-        {/* Painel lateral direito */}
-        <Box sx={{
-          order: { xs: 2, md: 2 },
-          width: { xs: '100%', md: '350px' }
-        }}>
-          {useEnhancedComponents ? (
-            <AdvancedTradingPanel
-              selectedBot={selectedBot}
-              botConfig={botConfig}
-              onConfigOpen={() => setConfigModalOpen(true)}
-            />
-          ) : (
-            <Card sx={{
-              borderRadius: '12px',
-              background: 'rgba(15, 25, 35, 0.9)',
-              backdropFilter: 'blur(20px)',
-              border: '1px solid rgba(0, 212, 170, 0.2)',
-              height: '100%'
-            }}>
-              <CardContent sx={{ p: 0, height: '100%' }}>
-              
-
-              {!derivConnected ? (
-                <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {/* Status de Conexão */}
-                  <Box sx={{ 
-                    textAlign: 'center', 
-                    p: 2, 
-                    border: '1px solid rgba(255, 193, 7, 0.3)',
-                    borderRadius: '8px',
-                    background: 'rgba(255, 193, 7, 0.05)'
-                  }}>
-                    <Warning sx={{ fontSize: 24, color: '#ffc107', mb: 1 }} />
-                    <Typography variant="body2" sx={{ color: '#ffffff', mb: 2 }}>
-                      Conecte sua conta Deriv
-                    </Typography>
-                    
-                    <Button
-                      variant="contained"
-                      startIcon={<Person />}
-                      fullWidth
-                      onClick={handleConnectDeriv}
-                      sx={{
-                        background: 'linear-gradient(135deg, #00d4aa 0%, #00b89c 100%)',
-                        '&:hover': {
-                          background: 'linear-gradient(135deg, #00b89c 0%, #00d4aa 100%)'
-                        },
-                        mb: 1
-                      }}
-                    >
-                      Conectar Conta
-                    </Button>
-
-                    <Button
-                      variant="outlined"
-                      fullWidth
-                      sx={{
-                        borderColor: 'rgba(0, 212, 170, 0.5)',
-                        color: '#00d4aa',
-                        fontSize: '0.875rem',
-                        '&:hover': {
-                          borderColor: '#00d4aa',
-                          background: 'rgba(0, 212, 170, 0.1)'
-                        }
-                      }}
-                      href={derivAffiliateLink || 'https://deriv.com'}
-                      target="_blank"
-                    >
-                      Criar Conta na Deriv
-                    </Button>
-                  </Box>
-
-                  {/* Instruções */}
-                  <Box sx={{
-                    p: 2,
-                    borderRadius: '6px',
-                    background: 'rgba(0, 0, 0, 0.2)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)'
-                  }}>
-                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.8)', lineHeight: 1.4 }}>
-                      1. Crie ou faça login na sua conta Deriv{<br />}
-                      2. Conecte sua conta para acessar os bots{<br />}
-                      3. Configure e inicie suas operações
-                    </Typography>
-                  </Box>
-                </Box>
-              ) : !selectedBot ? (
-                <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {/* SOLUÇÃO 7: Painel da Conta Deriv sem chamadas duplicadas */}
-                  {useEnhancedComponents ? (
-                    <EnhancedDerivAccountPanel
-                      isConnected={derivConnected}
-                      onRefresh={() => checkDerivConnection(false)}
-                      compact={true}
-                      showAdvancedStats={true}
-                    />
-                  ) : (
-                    <DerivAccountPanel
-                      isConnected={derivConnected}
-                      onRefresh={() => checkDerivConnection(false)}
-                      compact={true}
-                    />
-                  )}
-
-                  {/* Header de seleção de bot */}
-                  <Box sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    pb: 1,
-                    borderBottom: '1px solid rgba(0, 212, 170, 0.2)'
-                  }}>
-                    <SmartToy sx={{ color: '#00d4aa', fontSize: 20 }} />
-                    <Typography variant="subtitle1" sx={{ color: '#ffffff', fontWeight: 500 }}>
-                      Selecionar Bot
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.6)', ml: 'auto' }}>
-                      {loadingBots ? 'Carregando...' : `${Array.isArray(availableBots) ? availableBots.length : 0} disponíveis`}
-                    </Typography>
-                    <Button
-                      size="small"
-                      onClick={() => loadAvailableBots(true)}
-                      disabled={loadingBots}
-                      sx={{
-                        minWidth: 'auto',
-                        p: 0.5,
-                        color: '#00d4aa',
-                        '&:hover': {
-                          backgroundColor: 'rgba(0, 212, 170, 0.1)'
-                        },
-                        '&:disabled': {
-                          color: 'rgba(0, 212, 170, 0.3)'
-                        }
-                      }}
-                      title="Recarregar bots"
-                    >
-                      {loadingBots ? <CircularProgress size={16} sx={{ color: '#00d4aa' }} /> : <Refresh sx={{ fontSize: 16 }} />}
-                    </Button>
-                  </Box>
-
-                  {/* SOLUÇÃO 5: Lista simplificada de bots (padrão EonPro/dsbots) */}
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '300px', overflowY: 'auto' }}>
-                    {Array.isArray(availableBots) && availableBots.map((bot) => (
-                      <Box
-                        key={bot.id}
-                        onClick={() => setSelectedBot(bot)}
-                        className="bot-card"
-                        sx={{
-                          p: 2,
-                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                          borderRadius: '8px',
-                          background: 'rgba(0, 0, 0, 0.2)',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s',
-                          '&:hover': {
-                            borderColor: 'rgba(0, 212, 170, 0.5)',
-                            background: 'rgba(0, 212, 170, 0.05)',
-                            transform: 'translateY(-1px)'
-                          }
-                        }}
-                      >
-                        <Typography variant="subtitle2" sx={{ color: '#ffffff', fontWeight: 500, mb: 0.5 }}>
-                          {bot.name}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)', lineHeight: 1.3 }}>
-                          {bot.description}
-                        </Typography>
-                      </Box>
-                    ))}
-                  </Box>
-
-                  {loadingBots && (
-                    <Box sx={{ textAlign: 'center', p: 3 }}>
-                      <CircularProgress sx={{ color: '#00d4aa', mb: 2 }} />
-                      <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
-                        Carregando bots disponíveis...
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {!loadingBots && (!Array.isArray(availableBots) || availableBots.length === 0) && (
-                    <Box sx={{ textAlign: 'center', p: 3, color: 'rgba(255, 255, 255, 0.5)' }}>
-                      <SmartToy sx={{ fontSize: 32, mb: 1, opacity: 0.5 }} />
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        Nenhum bot disponível
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.4)' }}>
-                        Clique no botão de recarregar para tentar novamente
-                      </Typography>
-                    </Box>
-                  )}
-                </Box>
-              ) : (
-                <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {/* Bot selecionado header */}
-                  <Box sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    pb: 1,
-                    borderBottom: '1px solid rgba(0, 212, 170, 0.2)'
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <SmartToy sx={{ color: '#00d4aa', fontSize: 20 }} />
-                      <Typography variant="subtitle1" sx={{ color: '#ffffff', fontWeight: 500 }}>
-                        {selectedBot.name}
-                      </Typography>
-                    </Box>
-                    <Button
-                      size="small"
-                      onClick={() => setSelectedBot(null)}
-                      sx={{ color: 'rgba(255, 255, 255, 0.7)', minWidth: 'auto', p: 0.5 }}
-                    >
-                      Trocar
-                    </Button>
-                  </Box>
-
-                  {/* Descrição */}
-                  <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.8)', lineHeight: 1.4 }}>
-                    {selectedBot.description}
-                  </Typography>
-
-                  {/* Configurações do bot */}
-                  <Box sx={{
-                    p: 2,
-                    border: '1px solid rgba(0, 212, 170, 0.2)',
-                    borderRadius: '8px',
-                    background: 'rgba(0, 212, 170, 0.05)'
-                  }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="subtitle2" sx={{ color: '#ffffff' }}>
-                        Configurações
-                      </Typography>
-                      <Settings 
-                        sx={{ color: '#00d4aa', fontSize: 18, cursor: 'pointer' }} 
-                        onClick={() => setConfigModalOpen(true)}
-                      />
-                    </Box>
-                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                      Clique na engrenagem para configurar parâmetros de entrada
-                    </Typography>
-                  </Box>
-
-                  {/* Controles de operação */}
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <Button
-                      variant="contained"
-                      startIcon={operationRunning ? <CircularProgress size={16} /> : <PlayArrow />}
-                      disabled={operationRunning || !derivConnected || !selectedBot}
-                      onClick={handleStartOperation}
-                      fullWidth
-                      sx={{
-                        background: (!derivConnected || !selectedBot) ? 'linear-gradient(135deg, #666 0%, #555 100%)' : 'linear-gradient(135deg, #4caf50 0%, #388e3c 100%)',
-                        '&:hover': {
-                          background: (!derivConnected || !selectedBot) ? 'linear-gradient(135deg, #555 0%, #666 100%)' : 'linear-gradient(135deg, #388e3c 0%, #4caf50 100%)'
-                        },
-                        py: 1.5
-                      }}
-                    >
-                      {operationRunning ? 'Operando...' : (!derivConnected ? 'Conecte sua conta Deriv' : !selectedBot ? 'Selecione um bot' : 'Iniciar Operação')}
-                    </Button>
-
-                    {operationRunning && (
-                      <Button
-                        variant="outlined"
-                        startIcon={<Stop />}
-                        onClick={handleStopOperation}
-                        fullWidth
-                        sx={{
-                          borderColor: '#f44336',
-                          color: '#f44336',
-                          '&:hover': {
-                            borderColor: '#f44336',
-                            background: 'rgba(244, 67, 54, 0.1)'
-                          }
-                        }}
-                      >
-                        Parar Operação
-                      </Button>
-                    )}
-                  </Box>
-                </Box>
-              )}
-
-            </CardContent>
-          </Card>
-          )}
-        </Box>
-      </Box>
+            </MenuItem>
+          ))
+        ) : (
+          <MenuItem onClick={handleAccountMenuClose} sx={{ color: '#ffffff' }}>
+            <Box>
+              <Typography variant="body2" sx={{ color: '#b0b0b0' }}>
+                Nenhuma conta disponível
+              </Typography>
+            </Box>
+          </MenuItem>
+        )}
+      </Menu>
 
       {/* Modal de Configuração do Bot */}
-      <Dialog 
-        open={configModalOpen} 
+      <Dialog
+        open={configModalOpen}
         onClose={() => setConfigModalOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(25, 45, 65, 0.95)',
+            backdropFilter: 'blur(20px)',
+            border: '1px solid rgba(0, 212, 170, 0.2)',
+            borderRadius: 3
+          }
+        }}
       >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
+        <DialogTitle sx={{
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(0, 212, 170, 0.2)'
+          borderBottom: '1px solid rgba(0, 212, 170, 0.2)',
+          color: '#ffffff',
+          p: 3
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Settings sx={{ color: '#00d4aa' }} />
@@ -1301,15 +946,15 @@ const OperationsPage: React.FC = () => {
               Configurações do Bot
             </Typography>
           </Box>
-          <Button 
+          <IconButton
             onClick={() => setConfigModalOpen(false)}
-            sx={{ minWidth: 'auto', p: 0.5 }}
+            sx={{ color: '#b0b0b0' }}
           >
             <Close />
-          </Button>
+          </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: 3, color: '#ffffff' }}>
           <Grid container spacing={3}>
             
             {/* Parâmetros de Entrada */}
@@ -1471,22 +1116,61 @@ const OperationsPage: React.FC = () => {
           </Grid>
         </DialogContent>
 
-        <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(0, 212, 170, 0.2)' }}>
-          <Button 
+        <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(0, 212, 170, 0.2)', gap: 2 }}>
+          <Button
             onClick={() => setConfigModalOpen(false)}
             variant="outlined"
+            sx={{
+              borderColor: 'rgba(255, 255, 255, 0.3)',
+              color: '#ffffff',
+              '&:hover': {
+                borderColor: 'rgba(255, 255, 255, 0.5)',
+                bgcolor: 'rgba(255, 255, 255, 0.05)'
+              }
+            }}
           >
             Cancelar
           </Button>
-          <Button 
+          <Button
             onClick={handleSaveConfig}
             variant="contained"
             startIcon={<Settings />}
+            sx={{
+              background: 'linear-gradient(135deg, #00d4aa 0%, #00b89c 100%)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #00b89c 0%, #009688 100%)'
+              }
+            }}
           >
             Salvar Configurações
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* CSS para animações */}
+      <style>
+        {`
+          @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+          }
+
+          @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+          }
+
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+
+          .fade-in {
+            animation: fadeIn 0.5s ease-out;
+          }
+        `}
+      </style>
     </Box>
   );
 };
