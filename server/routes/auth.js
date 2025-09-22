@@ -145,12 +145,15 @@ const validateTokenAndGetAccounts = (token) => {
     const timeout = setTimeout(() => {
       ws.close();
       reject(new Error('Timeout: WebSocket connection took too long'));
-    }, 10000); // 10 seconds timeout for simple validation
+    }, 15000); // 15 seconds timeout for account list
+
+    let authorizeData = null;
+    let allAccounts = [];
 
     ws.onopen = () => {
-      console.log('🔗 Connected to Deriv WebSocket for simple token validation');
+      console.log('🔗 Connected to Deriv WebSocket for token validation and account discovery');
 
-      // Send ONLY authorize request
+      // Send authorize request first
       const authorizeRequest = {
         authorize: token,
         req_id: 1
@@ -162,7 +165,7 @@ const validateTokenAndGetAccounts = (token) => {
     ws.onmessage = (event) => {
       try {
         const response = JSON.parse(event.data);
-        console.log('📨 Deriv validation response:', { req_id: response.req_id, msg_type: response.msg_type });
+        console.log('📨 Deriv response:', { req_id: response.req_id, msg_type: response.msg_type });
 
         if (response.error) {
           console.error('❌ Deriv API error:', response.error);
@@ -172,6 +175,7 @@ const validateTokenAndGetAccounts = (token) => {
           return;
         }
 
+        // Step 1: Handle authorize response
         if (response.req_id === 1 && response.authorize) {
           console.log('✅ Token validation successful:', {
             loginid: response.authorize.loginid,
@@ -181,19 +185,55 @@ const validateTokenAndGetAccounts = (token) => {
             is_virtual: response.authorize.is_virtual
           });
 
-          const accountData = {
-            loginid: response.authorize.loginid,
-            email: response.authorize.email,
-            currency: response.authorize.currency,
-            country: response.authorize.country,
-            is_virtual: response.authorize.is_virtual,
-            fullname: response.authorize.fullname,
-            token: token
+          authorizeData = response.authorize;
+
+          // Step 2: Now request account_list to get ALL accounts
+          console.log('🔍 Requesting account_list to get all user accounts...');
+          const accountListRequest = {
+            account_list: 1,
+            req_id: 2
+          };
+
+          ws.send(JSON.stringify(accountListRequest));
+        }
+
+        // Step 3: Handle account_list response
+        if (response.req_id === 2 && response.account_list) {
+          console.log('📋 Account list received:', response.account_list.length, 'accounts found');
+
+          allAccounts = response.account_list.map(account => ({
+            loginid: account.loginid,
+            currency: account.currency,
+            is_virtual: account.is_virtual,
+            token: token, // All accounts use the same token
+            // Add user data from authorize
+            email: authorizeData.email,
+            country: authorizeData.country,
+            fullname: authorizeData.fullname
+          }));
+
+          console.log('🎯 All accounts mapped:', allAccounts.map(acc => ({
+            loginid: acc.loginid,
+            currency: acc.currency,
+            is_virtual: acc.is_virtual
+          })));
+
+          const result = {
+            // Primary account data (for compatibility)
+            loginid: authorizeData.loginid,
+            email: authorizeData.email,
+            currency: authorizeData.currency,
+            country: authorizeData.country,
+            is_virtual: authorizeData.is_virtual,
+            fullname: authorizeData.fullname,
+            token: token,
+            // ALL accounts list
+            allAccounts: allAccounts
           };
 
           clearTimeout(timeout);
           ws.close();
-          resolve(accountData);
+          resolve(result);
         }
       } catch (error) {
         clearTimeout(timeout);
@@ -870,15 +910,19 @@ router.get('/deriv/callback', async (req, res) => {
         console.log(`  ${idx + 1}. ${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'}) - ${acc.currency}`);
       });
 
-      // Validar apenas o primeiro token para confirmar conectividade
+      // Usar o token primário do OAuth e buscar TODAS as contas via account_list API
       const primaryAccount = accounts[0];
       const accountData = await validateTokenAndGetAccounts(primaryAccount.token);
 
-      console.log('✅ Primary token validation successful, saving all accounts...');
+      console.log('✅ Primary token validation successful, account_list received!');
+      console.log(`🎯 CORREÇÃO DERIV: ${accountData.allAccounts?.length || 1} contas encontradas via account_list API`);
 
       // Usar dados validados da API
       const validatedAccountId = accountData.loginid;
       const validatedIsDemo = accountData.is_virtual;
+
+      // CORREÇÃO CRÍTICA: Usar allAccounts da API em vez do parsing OAuth
+      const allAccountsForStorage = accountData.allAccounts || [accountData];
       
       // First, let's add the new columns if they don't exist
       try {
@@ -898,26 +942,13 @@ router.get('/deriv/callback', async (req, res) => {
         console.log('ℹ️ Database columns might already exist:', columnError.message);
       }
 
-      // CORREÇÃO: Salvar TODAS as contas OAuth encontradas
-      console.log(`📊 TOTAL DE CONTAS PARA SALVAR: ${accounts.length}`);
-      console.log('📋 Lista completa de contas OAuth:', accounts.map(acc => ({
+      // CORREÇÃO DERIV: Salvar TODAS as contas encontradas via account_list API
+      console.log(`📊 TOTAL DE CONTAS PARA SALVAR: ${allAccountsForStorage.length}`);
+      console.log('📋 Lista completa de contas da API Deriv:', allAccountsForStorage.map(acc => ({
         loginid: acc.loginid,
         currency: acc.currency,
-        is_virtual: acc.is_virtual,
-        token_prefix: acc.token.substring(0, 10) + '...'
+        is_virtual: acc.is_virtual
       })));
-
-      // Preparar dados para salvar no banco (usar contas OAuth + dados validados)
-      const allAccountsForStorage = accounts.map(acc => ({
-        token: acc.token,
-        loginid: acc.loginid,
-        currency: acc.currency,
-        is_virtual: acc.is_virtual,
-        // Adicionar dados validados da conta primária (aplicar a todas)
-        email: accountData.email,
-        fullname: accountData.fullname,
-        country: accountData.country
-      }));
 
       console.log('💾 Contas preparadas para armazenamento:', allAccountsForStorage.map(acc => ({
         loginid: acc.loginid,
