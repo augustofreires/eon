@@ -2,6 +2,18 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+// Declare window.authDebug type
+declare global {
+  interface Window {
+    authDebug?: {
+      user: any;
+      availableAccounts: DerivAccount[];
+      currentAccount: DerivAccount | null;
+      loading: boolean;
+    };
+  }
+}
+
 interface DerivAccount {
   loginid: string;
   currency: string;
