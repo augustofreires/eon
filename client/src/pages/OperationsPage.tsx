@@ -108,11 +108,26 @@ const OperationsPage: React.FC = () => {
       'timestamp': new Date().toISOString()
     });
 
-    // Alert se derivConnected mas sem currentAccount
+    // FORÇA RELOAD SE CONECTADO MAS SEM DADOS
     if (derivConnected && !currentAccount && availableAccounts.length === 0) {
-      console.warn('⚠️ PROBLEMA: Deriv conectado mas sem contas disponíveis!');
+      console.warn('⚠️ PROBLEMA: Deriv conectado mas sem contas disponíveis! Forçando reload...');
+
+      // Tentar forçar carregamento após um breve delay
+      setTimeout(async () => {
+        try {
+          console.log('🔄 FORCE RELOAD: Tentando carregar contas...');
+          await fetchAccounts('debug-force-reload');
+
+          setTimeout(async () => {
+            console.log('🔄 FORCE RELOAD: Tentando carregar account info...');
+            await loadAccountInfo();
+          }, 1000);
+        } catch (error) {
+          console.error('❌ FORCE RELOAD: Erro:', error);
+        }
+      }, 500);
     }
-  }, [user?.deriv_connected, derivWSConnected, derivConnected, user, currentAccount, availableAccounts]);
+  }, [user?.deriv_connected, derivWSConnected, derivConnected, user, currentAccount, availableAccounts, fetchAccounts, loadAccountInfo]);
 
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
@@ -573,11 +588,35 @@ const OperationsPage: React.FC = () => {
   // Carregar informações da conta quando conectar
   useEffect(() => {
     if (derivConnected && isInitialized) {
-      loadAccountInfo();
-      // Buscar contas se não há contas carregadas
-      if (availableAccounts.length === 0) {
-        fetchAccounts('operations-page-effect');
-      }
+      console.log('🔄 OperationsPage: Usuário conectado, carregando dados...');
+
+      // Forçar carregamento de dados com retry
+      const loadAllData = async () => {
+        try {
+          // Buscar contas primeiro
+          if (availableAccounts.length === 0) {
+            console.log('🔄 Buscando contas disponíveis...');
+            await fetchAccounts('operations-page-force');
+          }
+
+          // Carregar informações da conta
+          console.log('🔄 Carregando informações da conta...');
+          await loadAccountInfo();
+
+          // Se ainda não tem contas, tentar novamente em 2 segundos
+          setTimeout(() => {
+            if (availableAccounts.length === 0) {
+              console.log('🔄 Retry: Buscando contas novamente...');
+              fetchAccounts('operations-page-retry');
+            }
+          }, 2000);
+
+        } catch (error) {
+          console.error('❌ Erro carregando dados:', error);
+        }
+      };
+
+      loadAllData();
     }
   }, [derivConnected, isInitialized, loadAccountInfo, fetchAccounts, availableAccounts.length]);
 
