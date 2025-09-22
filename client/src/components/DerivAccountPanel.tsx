@@ -74,7 +74,7 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
       availableAccountsCount: availableAccounts?.length || 0,
       currentAccount: currentAccount?.loginid || null
     });
-    console.log('🔥 DEBUG: availableAccounts no DerivAccountPanel:', availableAccounts?.map(acc => `${acc.loginid} (${acc.currency})`));
+    console.log('🔥 DEBUG: availableAccounts no DerivAccountPanel:', availableAccounts?.map((acc: any) => `${acc.loginid} (${acc.currency})`));
   }, [isConnected, user?.deriv_connected, user, availableAccounts?.length, currentAccount?.loginid]);
   const [accountInfo, setAccountInfo] = useState<DerivAccountInfo | null>(null);
   const [loading, setLoading] = useState(false);

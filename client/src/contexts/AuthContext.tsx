@@ -233,7 +233,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           console.log(`✅ Status: ${accounts.length} contas carregadas`);
 
           setAvailableAccounts(accounts);
-          console.log('🔥 DEBUG: availableAccounts definido com', accounts.length, 'contas:', accounts.map(acc => acc.loginid));
+          console.log('🔥 DEBUG: availableAccounts definido com', accounts.length, 'contas:', accounts.map((acc: any) => acc.loginid));
 
           if (!currentAccount) {
             const primaryAccount = accounts.find((acc: any) => !acc.is_virtual) || accounts[0];
