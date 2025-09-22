@@ -812,6 +812,9 @@ router.get('/deriv/callback', async (req, res) => {
       isDemo: isDemo
     });
 
+    console.log('🔍 TODOS OS PARAMETROS OAuth:', JSON.stringify(req.query, null, 2));
+    console.log('📊 CONTAS EXTRAIDAS DO OAUTH:', accounts);
+
     // IMPLEMENTAÇÃO HÍBRIDA: Validar primeiro token, mas salvar todas as contas
     try {
       console.log('🔄 Validating primary token and saving all accounts...');
