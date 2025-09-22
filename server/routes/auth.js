@@ -694,14 +694,15 @@ router.get('/deriv/callback', async (req, res) => {
     let primaryToken = null;
     let primaryAccountId = null;
 
-    // Parse all accounts from OAuth response (CORRIGIDO)
+    // Parse all accounts from OAuth response - VERSÃO MELHORADA
     console.log('🔍 Iniciando busca por múltiplas contas...');
 
-    for (let i = 1; i <= 10; i++) { // Check up to 10 accounts
+    // PRIMEIRO: Tentar formato padrão token1/acct1/cur1
+    for (let i = 1; i <= 10; i++) {
       const tokenKey = `token${i}`;
       const acctKey = `acct${i}`;
-      const curKey = `cur${i}`;      // Deriv pode usar 'cur'
-      const currKey = `curr${i}`;    // Ou 'curr' (com duplo r)
+      const curKey = `cur${i}`;
+      const currKey = `curr${i}`;
 
       console.log(`🔎 Verificando conta ${i}:`, {
         tokenKey,
@@ -715,7 +716,6 @@ router.get('/deriv/callback', async (req, res) => {
       });
 
       if (req.query[tokenKey] && req.query[acctKey]) {
-        // Determinar currency (pode ser cur1 ou curr1)
         const currency = req.query[currKey] || req.query[curKey] || 'USD';
 
         const accountData = {
@@ -727,20 +727,62 @@ router.get('/deriv/callback', async (req, res) => {
         };
 
         accounts.push(accountData);
-        console.log(`✅ Conta ${i} encontrada e adicionada:`, {
+        console.log(`✅ Conta ${i} encontrada:`, {
           loginid: accountData.loginid,
           is_virtual: accountData.is_virtual,
           currency: accountData.currency,
           token_length: accountData.token.length
         });
 
-        // Use first account as primary
         if (!primaryToken) {
           primaryToken = accountData.token;
           primaryAccountId = accountData.loginid;
         }
-      } else {
-        console.log(`❌ Conta ${i} não encontrada (faltam token ou acct)`);
+      }
+    }
+
+    // SEGUNDO: Se não encontrou múltiplas contas, tentar formato alternativo
+    if (accounts.length <= 1) {
+      console.log('🔍 Tentando formatos alternativos OAuth...');
+
+      // Tentar formato access_token_1, account_1
+      for (let i = 1; i <= 10; i++) {
+        const altTokenKey = `access_token_${i}`;
+        const altAcctKey = `account_${i}`;
+
+        if (req.query[altTokenKey] && req.query[altAcctKey]) {
+          const accountData = {
+            token: sanitizeInput(req.query[altTokenKey]),
+            loginid: sanitizeInput(req.query[altAcctKey]),
+            currency: 'USD',
+            is_virtual: req.query[altAcctKey].toLowerCase().startsWith('vr')
+          };
+
+          if (!accounts.some(acc => acc.loginid === accountData.loginid)) {
+            accounts.push(accountData);
+            console.log(`✅ Conta alternativa ${i} encontrada:`, accountData.loginid);
+          }
+        }
+      }
+
+      // Tentar formato accounts[0], accounts[1]
+      for (let i = 0; i < 10; i++) {
+        const arrayTokenKey = `accounts[${i}][token]`;
+        const arrayAcctKey = `accounts[${i}][loginid]`;
+
+        if (req.query[arrayTokenKey] && req.query[arrayAcctKey]) {
+          const accountData = {
+            token: sanitizeInput(req.query[arrayTokenKey]),
+            loginid: sanitizeInput(req.query[arrayAcctKey]),
+            currency: req.query[`accounts[${i}][currency]`] || 'USD',
+            is_virtual: req.query[arrayAcctKey].toLowerCase().startsWith('vr')
+          };
+
+          if (!accounts.some(acc => acc.loginid === accountData.loginid)) {
+            accounts.push(accountData);
+            console.log(`✅ Conta array ${i} encontrada:`, accountData.loginid);
+          }
+        }
       }
     }
 
