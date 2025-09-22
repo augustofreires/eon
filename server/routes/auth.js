@@ -2066,4 +2066,299 @@ router.post('/reset-password', [
   }
 });
 
+// Novo endpoint para informações avançadas da conta
+router.get('/deriv/enhanced-account-info', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Buscar usuário
+    const userResult = await query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    if (!user.deriv_connected || !user.deriv_access_token) {
+      return res.status(400).json({ error: 'Conta Deriv não conectada' });
+    }
+
+    // Conectar com WebSocket da Deriv
+    const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '82349'}`);
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error('Timeout ao obter informações da conta'));
+      }, 15000);
+
+      let accountInfo = null;
+      let balanceInfo = null;
+      let transactionStats = null;
+
+      ws.onopen = () => {
+        // Autorizar
+        ws.send(JSON.stringify({
+          authorize: user.deriv_access_token,
+          req_id: 1
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const response = JSON.parse(event.data);
+
+          if (response.error) {
+            clearTimeout(timeout);
+            ws.close();
+            return reject(new Error(response.error.message));
+          }
+
+          // Handle authorization
+          if (response.authorize && response.req_id === 1) {
+            // Get balance
+            ws.send(JSON.stringify({
+              balance: 1,
+              req_id: 2
+            }));
+
+            // Get account info
+            ws.send(JSON.stringify({
+              get_account_status: 1,
+              req_id: 3
+            }));
+
+            // Get trading statistics (simplified)
+            ws.send(JSON.stringify({
+              statement: 1,
+              action_type: 'buy',
+              limit: 100,
+              req_id: 4
+            }));
+          }
+
+          // Handle balance
+          if (response.balance && response.req_id === 2) {
+            balanceInfo = response.balance;
+          }
+
+          // Handle account status
+          if (response.get_account_status && response.req_id === 3) {
+            accountInfo = response.get_account_status;
+          }
+
+          // Handle statement
+          if (response.statement && response.req_id === 4) {
+            transactionStats = response.statement;
+
+            // Quando temos todas as informações, processar e retornar
+            if (accountInfo && balanceInfo && transactionStats) {
+              clearTimeout(timeout);
+              ws.close();
+
+              // Calcular estatísticas de trading
+              const transactions = transactionStats.transactions || [];
+              const tradingStats = {
+                total_trades: transactions.length,
+                winning_trades: transactions.filter(t => t.profit > 0).length,
+                losing_trades: transactions.filter(t => t.profit < 0).length,
+                win_rate: 0
+              };
+
+              if (tradingStats.total_trades > 0) {
+                tradingStats.win_rate = (tradingStats.winning_trades / tradingStats.total_trades) * 100;
+              }
+
+              // Calcular lucro/prejuízo
+              const totalProfit = transactions.reduce((sum, t) => sum + (t.profit || 0), 0);
+              const todayTransactions = transactions.filter(t => {
+                const transactionDate = new Date(t.transaction_time * 1000);
+                const today = new Date();
+                return transactionDate.toDateString() === today.toDateString();
+              });
+              const todayProfit = todayTransactions.reduce((sum, t) => sum + (t.profit || 0), 0);
+
+              const profitPercentage = balanceInfo.balance > 0 ?
+                (totalProfit / balanceInfo.balance) * 100 : 0;
+
+              const enhancedInfo = {
+                account: {
+                  id: balanceInfo.loginid,
+                  balance: balanceInfo.balance,
+                  currency: balanceInfo.currency,
+                  is_virtual: balanceInfo.loginid.startsWith('VRT'),
+                  loginid: balanceInfo.loginid,
+                  fullname: user.deriv_fullname,
+                  email: user.deriv_email
+                },
+                profit_loss: {
+                  today: todayProfit,
+                  total: totalProfit,
+                  percentage: profitPercentage
+                },
+                trading_stats: tradingStats,
+                transactions: transactions.slice(0, 10), // Últimas 10 transações
+                warning: accountInfo.status && accountInfo.status.length > 0 ?
+                  accountInfo.status.join(', ') : null
+              };
+
+              resolve(enhancedInfo);
+            }
+          }
+
+        } catch (parseError) {
+          clearTimeout(timeout);
+          ws.close();
+          reject(parseError);
+        }
+      };
+
+      ws.onerror = (error) => {
+        clearTimeout(timeout);
+        ws.close();
+        reject(error);
+      };
+
+    }).then(enhancedInfo => {
+      res.json(enhancedInfo);
+    }).catch(error => {
+      console.error('Erro ao obter informações avançadas da conta:', error);
+      res.status(500).json({ error: error.message || 'Erro ao obter informações da conta' });
+    });
+
+  } catch (error) {
+    console.error('Erro no endpoint enhanced-account-info:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint para obter token para WebSocket
+router.get('/deriv/get-token', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const userResult = await query('SELECT deriv_access_token FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = userResult.rows[0];
+
+    if (!user.deriv_access_token) {
+      return res.status(400).json({ error: 'Token Deriv não encontrado' });
+    }
+
+    res.json({
+      success: true,
+      token: user.deriv_access_token
+    });
+
+  } catch (error) {
+    console.error('Erro ao obter token:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Buscar todas as contas disponíveis (rota que estava faltando!)
+router.post('/deriv/fetch-all-accounts', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log('🔍 Buscando todas as contas para usuário:', userId);
+
+    const result = await query(`
+      SELECT deriv_connected, deriv_access_token, deriv_accounts_tokens
+      FROM users
+      WHERE id = $1
+    `, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = result.rows[0];
+    const connected = !!(user.deriv_connected && (user.deriv_connected === true || user.deriv_connected === 1));
+
+    if (!connected || !user.deriv_access_token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Conta Deriv não conectada',
+        available_accounts: []
+      });
+    }
+
+    // Conectar com Deriv WebSocket para buscar contas
+    const WebSocket = require('ws');
+
+    const accountsPromise = new Promise((resolve, reject) => {
+      const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=' + (process.env.DERIV_APP_ID || 82349));
+
+      ws.on('open', () => {
+        console.log('🔌 Conectado ao WebSocket para buscar contas');
+
+        // Autorizar com token
+        ws.send(JSON.stringify({
+          authorize: user.deriv_access_token,
+          req_id: 1
+        }));
+      });
+
+      ws.on('message', (data) => {
+        try {
+          const response = JSON.parse(data);
+
+          if (response.req_id === 1 && response.authorize) {
+            // Buscar lista de contas
+            ws.send(JSON.stringify({
+              account_list: 1,
+              req_id: 2
+            }));
+          }
+
+          if (response.req_id === 2 && response.account_list) {
+            const accounts = response.account_list.map(account => ({
+              loginid: account.loginid,
+              currency: account.currency,
+              is_virtual: account.is_virtual,
+              token: account.token
+            }));
+
+            console.log(`✅ Contas encontradas: ${accounts.length}`);
+            ws.close();
+            resolve(accounts);
+          }
+        } catch (error) {
+          console.error('❌ Erro ao processar resposta WebSocket:', error);
+          ws.close();
+          reject(error);
+        }
+      });
+
+      ws.on('error', (error) => {
+        console.error('❌ Erro WebSocket:', error);
+        reject(error);
+      });
+
+      setTimeout(() => {
+        ws.close();
+        reject(new Error('Timeout ao buscar contas'));
+      }, 10000);
+    });
+
+    const accounts = await accountsPromise;
+
+    res.json({
+      success: true,
+      available_accounts: accounts
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar contas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor',
+      available_accounts: []
+    });
+  }
+});
+
 module.exports = router; 
