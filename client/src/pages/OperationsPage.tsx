@@ -127,7 +127,7 @@ const OperationsPage: React.FC = () => {
         }
       }, 500);
     }
-  }, [user?.deriv_connected, derivWSConnected, derivConnected, user, currentAccount, availableAccounts, fetchAccounts, loadAccountInfo]);
+  }, [user?.deriv_connected, derivWSConnected, derivConnected, user, currentAccount, availableAccounts, fetchAccounts]);
 
   const [selectedBot, setSelectedBot] = useState<Bot | null>(null);
   const [availableBots, setAvailableBots] = useState<Bot[]>([]);
@@ -618,7 +618,7 @@ const OperationsPage: React.FC = () => {
 
       loadAllData();
     }
-  }, [derivConnected, isInitialized, loadAccountInfo, fetchAccounts, availableAccounts.length]);
+  }, [derivConnected, isInitialized, fetchAccounts, availableAccounts.length]);
 
   // Atualizar preço atual quando há dados do WebSocket
   useEffect(() => {
