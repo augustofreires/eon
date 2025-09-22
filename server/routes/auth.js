@@ -581,7 +581,7 @@ router.get('/deriv/authorize', authenticateToken, async (req, res) => {
     }
 
     const derivAppId = process.env.DERIV_APP_ID;
-    const redirectUri = process.env.DERIV_OAUTH_REDIRECT_URL || `${process.env.CORS_ORIGIN || 'https://iaeon.site'}/operations`;
+    const redirectUri = process.env.DERIV_OAUTH_REDIRECT_URL || `${process.env.CORS_ORIGIN || 'https://iaeon.site'}/api/auth/deriv/callback`;
     
     // Gerar um token JWT temporário com userId para identificar no callback
     const jwt = require('jsonwebtoken');
