@@ -2361,4 +2361,81 @@ router.post('/deriv/fetch-all-accounts', authenticateToken, async (req, res) => 
   }
 });
 
+// DEBUG: Endpoint para verificar exatamente o que há no banco de dados
+router.get('/deriv/debug-user-data', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    console.log('🔍 DEBUG: Verificando dados do usuário:', userId);
+
+    const result = await query(`
+      SELECT id, email, deriv_connected, deriv_account_id, deriv_access_token,
+             deriv_email, deriv_currency, deriv_is_virtual, deriv_fullname,
+             deriv_accounts_tokens, LENGTH(deriv_accounts_tokens) as tokens_length
+      FROM users
+      WHERE id = $1
+    `, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = result.rows[0];
+
+    // Parse accounts tokens
+    let parsedAccounts = [];
+    let parseError = null;
+    try {
+      if (user.deriv_accounts_tokens) {
+        parsedAccounts = JSON.parse(user.deriv_accounts_tokens);
+      }
+    } catch (error) {
+      parseError = error.message;
+    }
+
+    console.log('🔍 DEBUG COMPLETO:', {
+      userId: user.id,
+      email: user.email,
+      deriv_connected: user.deriv_connected,
+      deriv_account_id: user.deriv_account_id,
+      has_access_token: !!user.deriv_access_token,
+      access_token_length: user.deriv_access_token?.length || 0,
+      deriv_email: user.deriv_email,
+      tokens_field_length: user.tokens_length,
+      raw_tokens: user.deriv_accounts_tokens,
+      parsed_accounts_count: parsedAccounts.length,
+      parse_error: parseError
+    });
+
+    res.json({
+      success: true,
+      debug_data: {
+        user_id: user.id,
+        email: user.email,
+        deriv_connected: user.deriv_connected,
+        deriv_account_id: user.deriv_account_id,
+        has_access_token: !!user.deriv_access_token,
+        access_token_length: user.deriv_access_token?.length || 0,
+        deriv_email: user.deriv_email,
+        deriv_currency: user.deriv_currency,
+        is_virtual: user.deriv_is_virtual,
+        fullname: user.deriv_fullname,
+        tokens_field_length: user.tokens_length,
+        raw_tokens_preview: user.deriv_accounts_tokens?.substring(0, 100) + '...',
+        parsed_accounts_count: parsedAccounts.length,
+        parsed_accounts: parsedAccounts.map(acc => ({
+          loginid: acc.loginid,
+          currency: acc.currency,
+          is_virtual: acc.is_virtual,
+          has_token: !!acc.token
+        })),
+        parse_error: parseError
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no debug:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 module.exports = router; 
