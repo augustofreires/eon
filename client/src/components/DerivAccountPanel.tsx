@@ -63,7 +63,19 @@ interface DerivAccountPanelProps {
 }
 
 const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRefresh, compact = false }) => {
-  const { availableAccounts, currentAccount, fetchAccounts, switchAccount } = useAuth();
+  const { user, availableAccounts, currentAccount, fetchAccounts, switchAccount } = useAuth();
+
+  // DEBUG: Log isConnected state changes
+  useEffect(() => {
+    console.log('🔍 DerivAccountPanel: isConnected state changed:', {
+      isConnected,
+      'user?.deriv_connected': user?.deriv_connected,
+      'user exists': !!user,
+      availableAccountsCount: availableAccounts?.length || 0,
+      currentAccount: currentAccount?.loginid || null
+    });
+    console.log('🔥 DEBUG: availableAccounts no DerivAccountPanel:', availableAccounts?.map(acc => `${acc.loginid} (${acc.currency})`));
+  }, [isConnected, user?.deriv_connected, user, availableAccounts?.length, currentAccount?.loginid]);
   const [accountInfo, setAccountInfo] = useState<DerivAccountInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -105,7 +117,13 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
 
   const handleRefresh = () => {
     loadAccountInfo();
-    fetchAccounts('manual-refresh'); // Buscar contas disponíveis
+    // CORREÇÃO: Só buscar contas se realmente não houver nenhuma conta carregada
+    if (availableAccounts.length === 0) {
+      console.log('🔄 DerivAccountPanel: Buscando contas (refresh sem contas)');
+      fetchAccounts('manual-refresh');
+    } else {
+      console.log('ℹ️ DerivAccountPanel: Contas já carregadas, pulando fetchAccounts no refresh');
+    }
     if (onRefresh) onRefresh();
   };
 
@@ -128,7 +146,8 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
       setLoading(true);
       handleAccountMenuClose();
 
-      await switchAccount(account);
+      // CORREÇÃO: Indicar que é uma troca manual para mostrar notificação
+      await switchAccount(account, true);
 
       console.log('✅ DerivAccountPanel: Switch concluído, recarregando informações...');
 

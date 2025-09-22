@@ -31,7 +31,7 @@ interface AuthContextType {
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
   fetchAccounts: (source?: string) => Promise<void>;
-  switchAccount: (account: DerivAccount) => Promise<void>;
+  switchAccount: (account: DerivAccount, manual?: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -160,7 +160,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const updateUser = (userData: Partial<User>) => {
-    setUser(prev => prev ? { ...prev, ...userData } : null);
+    console.log('🔄 AuthContext: updateUser called:', {
+      current_user: user,
+      update_data: userData,
+      deriv_connected_changing: userData.deriv_connected !== user?.deriv_connected
+    });
+
+    setUser(prev => {
+      if (!prev) return null;
+      const updated = { ...prev, ...userData };
+
+      console.log('✅ AuthContext: User state updated:', {
+        before: prev,
+        after: updated,
+        deriv_connected_changed: prev.deriv_connected !== updated.deriv_connected
+      });
+
+      return updated;
+    });
   };
 
   // CORREÇÃO: Versão otimizada com controle de execuções múltiplas
@@ -216,6 +233,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           console.log(`✅ Status: ${accounts.length} contas carregadas`);
 
           setAvailableAccounts(accounts);
+          console.log('🔥 DEBUG: availableAccounts definido com', accounts.length, 'contas:', accounts.map(acc => acc.loginid));
 
           if (!currentAccount) {
             const primaryAccount = accounts.find((acc: any) => !acc.is_virtual) || accounts[0];
@@ -256,7 +274,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const switchAccount = async (account: DerivAccount) => {
+  const switchAccount = async (account: DerivAccount, manual: boolean = false) => {
     try {
       setLoading(true);
 
@@ -292,10 +310,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         console.log('✅ AuthContext: Switch realizado com sucesso:', {
           new_account: account.loginid,
-          is_virtual: account.is_virtual
+          is_virtual: account.is_virtual,
+          manual: manual
         });
 
-        toast.success(`Conta alterada para: ${account.loginid} (${account.currency}) - ${account.is_virtual ? 'Virtual' : 'Real'}`);
+        // CORREÇÃO: Só mostrar notificação quando é troca manual explícita
+        if (manual) {
+          toast.success(`Conta alterada para: ${account.loginid} (${account.currency}) - ${account.is_virtual ? 'Virtual' : 'Real'}`);
+        }
       } else {
         throw new Error(response.data.error || 'Erro no switch de conta');
       }
