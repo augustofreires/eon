@@ -1300,7 +1300,12 @@ router.get('/deriv/status', authenticateToken, async (req, res) => {
       userId,
       connected,
       hasToken: !!user.deriv_access_token,
-      account_id: user.deriv_account_id
+      account_id: user.deriv_account_id,
+      is_virtual: user.deriv_is_virtual,
+      currency: user.deriv_currency,
+      email: user.deriv_email,
+      fullname: user.deriv_fullname,
+      timestamp: new Date().toISOString()
     });
 
     // Parse available accounts
@@ -1451,11 +1456,65 @@ router.get('/deriv/account-info', authenticateToken, async (req, res) => {
         console.log('📄 Raw data:', user.deriv_accounts_tokens);
       }
 
+      // Buscar saldo atual via WebSocket
+      let currentBalance = derivData.balance_info?.balance || 0;
+      try {
+        const balanceWs = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '82349'}`);
+
+        const balancePromise = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            balanceWs.close();
+            resolve(currentBalance); // Usar fallback se timeout
+          }, 5000);
+
+          balanceWs.onopen = () => {
+            // Autorizar com o token da conta atual
+            balanceWs.send(JSON.stringify({
+              authorize: user.deriv_access_token,
+              req_id: 1
+            }));
+          };
+
+          balanceWs.onmessage = (event) => {
+            try {
+              const response = JSON.parse(event.data);
+
+              if (response.authorize && response.req_id === 1) {
+                // Solicitar saldo
+                balanceWs.send(JSON.stringify({
+                  balance: 1,
+                  req_id: 2
+                }));
+              } else if (response.balance && response.req_id === 2) {
+                clearTimeout(timeout);
+                balanceWs.close();
+                resolve(response.balance.balance || currentBalance);
+              }
+            } catch (e) {
+              clearTimeout(timeout);
+              balanceWs.close();
+              resolve(currentBalance);
+            }
+          };
+
+          balanceWs.onerror = () => {
+            clearTimeout(timeout);
+            resolve(currentBalance);
+          };
+        });
+
+        const realBalance = await balancePromise;
+        console.log('💰 Saldo real obtido para account-info:', realBalance);
+        currentBalance = realBalance;
+      } catch (balanceError) {
+        console.error('⚠️ Erro ao obter saldo real, usando fallback:', balanceError);
+      }
+
       res.json({
         success: true,
         account: {
           id: user.deriv_account_id,
-          balance: derivData.balance_info?.balance || 0,
+          balance: currentBalance,
           currency: derivData.balance_info?.currency || user.deriv_currency || 'USD',
           is_virtual: derivData.account_info?.is_virtual || user.deriv_is_virtual,
           fullname: derivData.account_info?.fullname || user.deriv_fullname,
@@ -1492,12 +1551,63 @@ router.get('/deriv/account-info', authenticateToken, async (req, res) => {
         console.log('❌ FALLBACK Erro ao fazer parse das contas:', parseError);
       }
 
+      // Buscar saldo via WebSocket mesmo no fallback
+      let fallbackBalance = 0;
+      try {
+        const fallbackWs = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '82349'}`);
+
+        const fallbackBalancePromise = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            fallbackWs.close();
+            resolve(0);
+          }, 5000);
+
+          fallbackWs.onopen = () => {
+            fallbackWs.send(JSON.stringify({
+              authorize: user.deriv_access_token,
+              req_id: 1
+            }));
+          };
+
+          fallbackWs.onmessage = (event) => {
+            try {
+              const response = JSON.parse(event.data);
+
+              if (response.authorize && response.req_id === 1) {
+                fallbackWs.send(JSON.stringify({
+                  balance: 1,
+                  req_id: 2
+                }));
+              } else if (response.balance && response.req_id === 2) {
+                clearTimeout(timeout);
+                fallbackWs.close();
+                resolve(response.balance.balance || 0);
+              }
+            } catch (e) {
+              clearTimeout(timeout);
+              fallbackWs.close();
+              resolve(0);
+            }
+          };
+
+          fallbackWs.onerror = () => {
+            clearTimeout(timeout);
+            resolve(0);
+          };
+        });
+
+        fallbackBalance = await fallbackBalancePromise;
+        console.log('💰 Saldo fallback obtido:', fallbackBalance);
+      } catch (error) {
+        console.error('⚠️ Erro no saldo fallback:', error);
+      }
+
       // Retornar informações básicas se a API falhar
       res.json({
         success: true,
         account: {
           id: user.deriv_account_id,
-          balance: 0.02, // Mock do saldo para teste
+          balance: fallbackBalance,
           currency: user.deriv_currency || 'USD',
           is_virtual: user.deriv_is_virtual,
           fullname: user.deriv_fullname,
@@ -1510,7 +1620,7 @@ router.get('/deriv/account-info', authenticateToken, async (req, res) => {
         })),
         transactions: [],
         profit_loss: { today: 0, total: 0 },
-        warning: 'Não foi possível obter saldo em tempo real. Exibindo valor simulado.'
+        warning: fallbackBalance === 0 ? 'Não foi possível obter saldo em tempo real.' : null
       });
     }
 
@@ -1754,7 +1864,17 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     const { is_virtual, loginid } = req.body; // Aceitar loginid específico
 
-    console.log('🔄 Solicitação de troca de conta:', { userId, is_virtual, loginid });
+    console.log('📥 INICIO SWITCH-ACCOUNT:', {
+      timestamp: new Date().toISOString(),
+      userId,
+      is_virtual,
+      loginid,
+      headers: {
+        'content-type': req.headers['content-type'],
+        'authorization': req.headers.authorization ? 'presente' : 'ausente'
+      },
+      body: req.body
+    });
 
     // Buscar informações atuais do usuário incluindo tokens de todas as contas
     const userResult = await query(`
@@ -1866,8 +1986,32 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
             }
 
             if (response.req_id === 1 && response.authorize) {
-              // Conta autorizada com sucesso!
-              console.log('✅ Successfully switched to account:', {
+              // CRÍTICO: Validar se a conta retornada é realmente a conta solicitada
+              const authorizedLoginId = response.authorize.loginid;
+              const requestedLoginId = targetAccount.loginid;
+
+              console.log('🔍 Validating account switch response:', {
+                requested: requestedLoginId,
+                authorized: authorizedLoginId,
+                match: authorizedLoginId === requestedLoginId
+              });
+
+              // Se a conta autorizada não é a conta solicitada, rejeitar
+              if (authorizedLoginId !== requestedLoginId) {
+                console.error('❌ CRITICAL: Account mismatch detected!', {
+                  requested: requestedLoginId,
+                  authorized: authorizedLoginId,
+                  error: 'Deriv returned different account than requested'
+                });
+
+                clearTimeout(timeout);
+                ws.close();
+                reject(new Error(`Account mismatch: requested ${requestedLoginId} but got ${authorizedLoginId}`));
+                return;
+              }
+
+              // Conta autorizada com sucesso e correta!
+              console.log('✅ Successfully switched to correct account:', {
                 loginid: response.authorize.loginid,
                 currency: response.authorize.currency,
                 is_virtual: response.authorize.is_virtual
@@ -1876,7 +2020,7 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
               clearTimeout(timeout);
               ws.close();
 
-              // Resolver com os dados da conta autorizada
+              // Resolver com os dados da conta autorizada (agora validada)
               resolve({
                 loginid: response.authorize.loginid,
                 currency: response.authorize.currency,
@@ -1911,6 +2055,19 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
       const switchResult = await switchPromise;
 
       // Atualizar banco de dados com nova conta ativa e seu token
+      console.log('🔄 Atualizando banco de dados com nova conta:', {
+        from: {
+          account_id: user.deriv_account_id,
+          token: user.deriv_access_token?.substring(0, 10) + '...'
+        },
+        to: {
+          account_id: switchResult.loginid,
+          token: switchResult.token?.substring(0, 10) + '...',
+          is_virtual: switchResult.is_virtual,
+          currency: switchResult.currency
+        }
+      });
+
       await query(`
         UPDATE users
         SET deriv_access_token = $1,
@@ -1927,25 +2084,128 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
         userId
       ]);
 
+      console.log('✅ Banco de dados atualizado com sucesso para conta:', switchResult.loginid);
+
+      // VERIFICAR SE A ATUALIZAÇÃO REALMENTE FUNCIONOU
+      const verificationResult = await query(`
+        SELECT deriv_account_id, deriv_access_token, deriv_is_virtual, deriv_currency
+        FROM users
+        WHERE id = $1
+      `, [userId]);
+
+      const updatedUser = verificationResult.rows[0];
+      console.log('🔍 Verificação pós-update:', {
+        userId,
+        expected: {
+          account_id: switchResult.loginid,
+          is_virtual: switchResult.is_virtual,
+          currency: switchResult.currency
+        },
+        actual: {
+          account_id: updatedUser.deriv_account_id,
+          is_virtual: updatedUser.deriv_is_virtual,
+          currency: updatedUser.deriv_currency,
+          token_matches: updatedUser.deriv_access_token === switchResult.token
+        }
+      });
+
+      // Se a verificação falhar, tentar novamente
+      if (updatedUser.deriv_account_id !== switchResult.loginid) {
+        console.error('❌ CRÍTICO: Banco não foi atualizado! Tentando novamente...');
+
+        await query(`
+          UPDATE users
+          SET deriv_access_token = $1,
+              deriv_account_id = $2,
+              deriv_is_virtual = $3,
+              deriv_currency = $4,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $5
+        `, [
+          switchResult.token,
+          switchResult.loginid,
+          switchResult.is_virtual,
+          switchResult.currency,
+          userId
+        ]);
+
+        console.log('🔄 Segunda tentativa de atualização realizada');
+      }
+
       console.log('✅ Conta trocada com sucesso:', {
         from: user.deriv_account_id,
         to: switchResult.loginid,
         type: switchResult.is_virtual ? 'Virtual' : 'Real'
       });
 
-      // Retornar informações da nova conta
-      res.json({
+      // Buscar saldo atual da nova conta via WebSocket
+      let currentBalance = 0;
+      try {
+        const balanceWs = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '82349'}`);
+
+        const balancePromise = new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            balanceWs.close();
+            resolve(0); // Fallback para 0 se não conseguir obter
+          }, 5000);
+
+          balanceWs.onopen = () => {
+            // Autorizar com o token da nova conta
+            balanceWs.send(JSON.stringify({
+              authorize: switchResult.token,
+              req_id: 1
+            }));
+          };
+
+          balanceWs.onmessage = (event) => {
+            try {
+              const response = JSON.parse(event.data);
+
+              if (response.authorize && response.req_id === 1) {
+                // Solicitar saldo
+                balanceWs.send(JSON.stringify({
+                  balance: 1,
+                  req_id: 2
+                }));
+              } else if (response.balance && response.req_id === 2) {
+                clearTimeout(timeout);
+                balanceWs.close();
+                resolve(response.balance.balance || 0);
+              }
+            } catch (e) {
+              clearTimeout(timeout);
+              balanceWs.close();
+              resolve(0);
+            }
+          };
+
+          balanceWs.onerror = () => {
+            clearTimeout(timeout);
+            resolve(0);
+          };
+        });
+
+        currentBalance = await balancePromise;
+        console.log('💰 Saldo atual obtido:', currentBalance);
+      } catch (balanceError) {
+        console.error('⚠️ Erro ao obter saldo, usando 0:', balanceError);
+        currentBalance = 0;
+      }
+
+      // Retornar informações da nova conta com saldo real
+      const responseData = {
         success: true,
         message: `Conta alterada para ${switchResult.is_virtual ? 'Virtual' : 'Real'} com sucesso`,
         accountInfo: {
           account: {
             id: switchResult.loginid,
-            balance: switchResult.balance || 0,
+            balance: currentBalance,
             currency: switchResult.currency,
             is_virtual: switchResult.is_virtual,
             fullname: switchResult.fullname,
             email: switchResult.email
           },
+          token: switchResult.token, // TOKEN CORRIGIDO AQUI!
           available_accounts: storedAccounts.map(acc => ({
             loginid: acc.loginid,
             currency: acc.currency,
@@ -1954,7 +2214,20 @@ router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
           transactions: [],
           profit_loss: { today: 0, total: 0 }
         }
+      };
+
+      console.log('📤 RESPOSTA SWITCH-ACCOUNT:', {
+        timestamp: new Date().toISOString(),
+        userId,
+        success: responseData.success,
+        newAccountId: responseData.accountInfo.account.id,
+        newBalance: responseData.accountInfo.account.balance,
+        newCurrency: responseData.accountInfo.account.currency,
+        newIsVirtual: responseData.accountInfo.account.is_virtual,
+        availableAccountsCount: responseData.accountInfo.available_accounts.length
       });
+
+      res.json(responseData);
 
     } catch (switchError) {
       console.error('❌ Erro ao trocar conta:', switchError);
