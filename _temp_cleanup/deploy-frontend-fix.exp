@@ -1,0 +1,96 @@
+#!/usr/bin/expect -f
+
+set timeout 300
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🚀 DEPLOY: CORREÇÃO FRONTEND PARA TROCA DE CONTAS\n"
+send_user "🎯 CORRIGINDO: WebSocket reconnection após switch\n\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+# Fazer backup dos arquivos
+send_user "📁 Fazendo backup dos arquivos atuais...\n"
+send "cp client/src/services/DerivWebSocketService.ts client/src/services/DerivWebSocketService.ts.backup.$(date +%Y%m%d_%H%M%S)\r"
+expect "# "
+send "cp client/src/hooks/useDerivOperations.ts client/src/hooks/useDerivOperations.ts.backup.$(date +%Y%m%d_%H%M%S)\r"
+expect "# "
+send "cp client/src/contexts/AuthContext.tsx client/src/contexts/AuthContext.tsx.backup.$(date +%Y%m%d_%H%M%S)\r"
+expect "# "
+
+send "exit\r"
+expect eof
+
+# Upload dos arquivos corrigidos
+send_user "📤 Fazendo upload dos arquivos corrigidos...\n"
+
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no "/Users/augustofreires/Desktop/Bots deriv/client/src/services/DerivWebSocketService.ts" root@31.97.28.231:/root/eon/client/src/services/DerivWebSocketService.ts
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+expect eof
+
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no "/Users/augustofreires/Desktop/Bots deriv/client/src/hooks/useDerivOperations.ts" root@31.97.28.231:/root/eon/client/src/hooks/useDerivOperations.ts
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+expect eof
+
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no "/Users/augustofreires/Desktop/Bots deriv/client/src/contexts/AuthContext.tsx" root@31.97.28.231:/root/eon/client/src/contexts/AuthContext.tsx
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+expect eof
+
+# Reconectar para rebuild
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon/client\r"
+expect "# "
+
+send_user "🔨 Rebuilding frontend...\n"
+send "npm run build\r"
+expect "# " timeout 120
+
+send_user "📂 Copiando build para nginx...\n"
+send "cp -r build/* /usr/share/nginx/html/\r"
+expect "# "
+
+send_user "🔄 Reiniciando servidor...\n"
+send "cd /root/eon\r"
+expect "# "
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+send_user "\n✅ CORREÇÃO FRONTEND DEPLOYADA!\n"
+send_user "\n🔧 CORREÇÃO APLICADA:\n"
+send_user "   ✅ WebSocket agora chama /get-token após switch\n"
+send_user "   ✅ Reconecta com token específico da conta\n"
+send_user "   ✅ Balance deve atualizar automaticamente\n"
+send_user "\n🧪 TESTE AGORA:\n"
+send_user "   1. Abra https://iaeon.site/operations\n"
+send_user "   2. Troque de conta\n"
+send_user "   3. BALANCE DEVE ATUALIZAR EM 3-5 SEGUNDOS!\n"
+
+interact

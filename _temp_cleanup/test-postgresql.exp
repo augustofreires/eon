@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "Connected"
+    }
+}
+
+send "cd /root/eon\r"
+expect "# "
+
+puts "Finding PostgreSQL configuration..."
+send "cat server/database/connection.js\r"
+expect "# "
+
+puts "Listing PostgreSQL databases..."
+send "sudo -u postgres psql -l\r"
+expect "# "
+
+puts "Testing server on correct port (5000)..."
+send "curl -I http://localhost:5000\r"
+expect "# "
+
+puts "Testing switch-account endpoint on port 5000..."
+send "curl -X POST http://localhost:5000/api/auth/deriv/switch-account -H \"Content-Type: application/json\" -d '{\"test\": true}'\r"
+expect "# "
+
+interact

@@ -32,6 +32,7 @@ interface User {
   deriv_currency?: string;
   deriv_is_virtual?: boolean;
   deriv_fullname?: string;
+  deriv_access_token?: string;
 }
 
 interface AuthContextType {
@@ -141,6 +142,88 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkAuth();
   }, []);
 
+  // CORREÇÃO CRÍTICA: Listener para capturar callback OAuth de janela popup
+  useEffect(() => {
+    const handleOAuthCallback = async (event: MessageEvent) => {
+      // Verificar origem por segurança
+      if (event.origin !== window.location.origin) {
+        console.warn('🔒 Callback OAuth de origem não confiável ignorado:', event.origin);
+        return;
+      }
+
+      if (event.data && event.data.type === 'deriv-oauth-callback') {
+        console.log('🔍 OAUTH CALLBACK: Dados recebidos na janela principal:', {
+          accountsCount: event.data.accounts?.length,
+          tokensCount: Object.keys(event.data.tokens || {}).length,
+          primaryAccount: event.data.primaryAccount,
+          primaryToken: event.data.primaryToken?.substring(0, 10) + '...'
+        });
+
+        try {
+          // Processar o callback OAuth
+          const response = await axios.post('/api/auth/deriv/process-callback', {
+            accounts: event.data.accounts,
+            tokens: event.data.tokens,
+            allParams: event.data.allParams
+          });
+
+          if (response.data.success) {
+            console.log('✅ OAUTH CALLBACK: Processamento bem-sucedido');
+
+            // Atualizar dados do usuário
+            updateUser({
+              deriv_connected: true,
+              deriv_account_id: response.data.accountInfo?.account?.loginid,
+              deriv_email: response.data.accountInfo?.account?.email,
+              deriv_currency: response.data.accountInfo?.account?.currency,
+              deriv_is_virtual: response.data.accountInfo?.account?.is_virtual,
+              deriv_fullname: response.data.accountInfo?.account?.fullname
+            });
+
+            // Buscar e definir contas disponíveis
+            if (event.data.accounts && event.data.accounts.length > 0) {
+              setAvailableAccounts(event.data.accounts);
+
+              // Definir conta primária
+              const primaryAccount = event.data.accounts.find((acc: DerivAccount) => !acc.is_virtual) || event.data.accounts[0];
+              setCurrentAccount(primaryAccount);
+
+              console.log('✅ OAUTH CALLBACK: Contas definidas:', {
+                total: event.data.accounts.length,
+                primary: primaryAccount.loginid
+              });
+            }
+
+            // Salvar no localStorage
+            localStorage.setItem('deriv_connected', 'true');
+            localStorage.setItem('deriv_account_data', JSON.stringify({
+              account_id: response.data.accountInfo?.account?.loginid,
+              deriv_email: response.data.accountInfo?.account?.email,
+              deriv_currency: response.data.accountInfo?.account?.currency,
+              deriv_is_virtual: response.data.accountInfo?.account?.is_virtual,
+              deriv_fullname: response.data.accountInfo?.account?.fullname
+            }));
+
+          } else {
+            console.error('❌ OAUTH CALLBACK: Erro no processamento:', response.data.error);
+          }
+        } catch (error) {
+          console.error('❌ OAUTH CALLBACK: Erro na chamada da API:', error);
+        }
+      } else if (event.data && event.data.type === 'deriv-oauth-error') {
+        console.error('❌ OAUTH ERROR:', event.data.error);
+        console.error('❌ DEBUG info:', event.data.debug);
+      }
+    };
+
+    window.addEventListener('message', handleOAuthCallback);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('message', handleOAuthCallback);
+    };
+  }, []); // Remove dependency para evitar erro de hoisting
+
   const login = async (email: string, password: string, isAdmin: boolean) => {
     try {
       setLoading(true);
@@ -205,22 +288,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log(`🔄 AuthContext: Buscando contas (fonte: ${source})...`);
 
       // ESTRATÉGIA 1: Verificar parâmetros OAuth na URL (prioridade máxima)
+      // CORREÇÃO: Verificar tanto query params quanto hash fragment
       const urlParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
       const oauthAccounts = [];
 
-      for (let i = 1; i <= 3; i++) {
-        const acct = urlParams.get(`acct${i}`);
-        const token = urlParams.get(`token${i}`);
-        const cur = urlParams.get(`cur${i}`);
+      // Combinar ambos os sources
+      const allParams = new Map();
+      urlParams.forEach((value, key) => allParams.set(key, value));
+      hashParams.forEach((value, key) => allParams.set(key, value));
 
-        if (acct && token && cur) {
+      console.log('🔍 AuthContext fetchAccounts: URL params found:', {
+        query: Array.from(urlParams.entries()),
+        hash: Array.from(hashParams.entries()),
+        combined: Array.from(allParams.entries())
+      });
+
+      // Suportar até 10 contas (como no callback)
+      for (let i = 1; i <= 10; i++) {
+        const acct = allParams.get(`acct${i}`);
+        const token = allParams.get(`token${i}`);
+        const cur = allParams.get(`cur${i}`);
+
+        if (acct && token) {
           oauthAccounts.push({
             loginid: acct,
-            currency: cur,
+            currency: cur || 'USD',
             is_virtual: acct.startsWith('VRT'),
             token: token
           });
         }
+      }
+
+      // Também verificar access_token diretamente
+      const accessToken = allParams.get('access_token') || allParams.get('token');
+      if (accessToken && !oauthAccounts.length) {
+        console.log('🔍 AuthContext: Found direct access token');
+        oauthAccounts.push({
+          loginid: 'DERIV_ACCOUNT',
+          currency: 'USD',
+          is_virtual: false,
+          token: accessToken
+        });
       }
 
       if (oauthAccounts.length > 0) {
@@ -303,35 +412,70 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setLoading(true);
 
-      console.log('🔄 AuthContext: Iniciando switch de conta:', {
+      console.log('🔄 DERIV PATTERN: Starting official account switch:', {
         from: currentAccount?.loginid || 'N/A',
         to: account.loginid,
-        is_virtual: account.is_virtual
+        is_virtual: account.is_virtual,
+        url: '/api/auth/deriv/switch-account',
+        payload: {
+          is_virtual: account.is_virtual,
+          loginid: account.loginid
+        }
       });
 
-      // Chamar endpoint para trocar conta (usar loginid específico)
+      // OFFICIAL DERIV PATTERN: Update localStorage FIRST (before API call)
+      console.log('💾 DERIV PATTERN: Updating localStorage first...');
+      localStorage.setItem('deriv_account_data', JSON.stringify({
+        account_id: account.loginid,
+        deriv_currency: account.currency,
+        deriv_is_virtual: account.is_virtual
+      }));
+
+      // Update current account state immediately (like official implementation)
+      setCurrentAccount(account);
+
+      // Update user state immediately
+      updateUser({
+        deriv_account_id: account.loginid,
+        deriv_currency: account.currency,
+        deriv_is_virtual: account.is_virtual
+      });
+
+      // Call backend to re-authorize with target account token
+      console.log('📤 DERIV PATTERN: Calling switch-account API...');
       const response = await axios.post('/api/auth/deriv/switch-account', {
         is_virtual: account.is_virtual,
         loginid: account.loginid
       });
 
+      console.log('📥 DERIV PATTERN: Backend response received:', {
+        status: response.status,
+        success: response.data.success,
+        message: response.data.message,
+        hasAccountInfo: !!response.data.accountInfo,
+        accountId: response.data.accountInfo?.account?.id,
+        balance: response.data.accountInfo?.account?.balance
+      });
+
       if (response.data.success) {
-        // Atualizar conta atual IMEDIATAMENTE
-        setCurrentAccount(account);
+        console.log('✅ DERIV PATTERN: Backend switch successful');
 
-        // Atualizar dados do usuário com a nova conta
-        updateUser({
-          deriv_account_id: account.loginid,
-          deriv_currency: account.currency,
-          deriv_is_virtual: account.is_virtual
-        });
-
-        // Atualizar localStorage
-        localStorage.setItem('deriv_account_data', JSON.stringify({
-          account_id: account.loginid,
-          deriv_currency: account.currency,
-          deriv_is_virtual: account.is_virtual
-        }));
+        // CRITICAL: Trigger WebSocket account switch (official pattern - no token needed)
+        console.log('🔄 DERIV PATTERN: Triggering WebSocket account switch...');
+        try {
+          // OFFICIAL DERIV PATTERN: Dispatch event for WebSocket reinitialization
+          // The WebSocket service will call /get-token internally
+          window.dispatchEvent(new CustomEvent('deriv-account-switched', {
+            detail: {
+              accountId: account.loginid,
+              account: account,
+              useOfficialPattern: true  // Flag to use official switching pattern
+            }
+          }));
+          console.log('✅ DERIV PATTERN: WebSocket switch event dispatched with official pattern (WebSocket will get token internally)');
+        } catch (wsError) {
+          console.error('❌ DERIV PATTERN: Error in WebSocket switch:', wsError);
+        }
 
         console.log('✅ AuthContext: Switch realizado com sucesso:', {
           new_account: account.loginid,
@@ -383,4 +527,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-}; 
+};
+
+export { AuthContext }; 

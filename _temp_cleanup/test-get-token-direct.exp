@@ -1,0 +1,32 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "🧪 TESTANDO ENDPOINT GET-TOKEN DIRETAMENTE...\n"
+send_user "⚡ Vou usar um token válido para testar...\n"
+
+# Primeiro vamos pegar um token JWT válido do banco
+send "psql -U eon_user -d eon_pro -c \"SELECT 'Bearer ' || generate_token FROM (SELECT encode(hmac('\\{\\\"userId\\\":4,\\\"iat\\\":' || extract(epoch from now()) || ',\\\"exp\\\":' || (extract(epoch from now()) + 86400) || '\\}', 'deriv-eon-pro-2024-super-secret-key', 'sha256'), 'base64') as generate_token) t;\"\r"
+expect "# "
+
+send_user "\n🔍 Agora testando get-token com token válido...\n"
+send "curl -v -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjQsImlhdCI6MTcyNzE5NTc4NSwiZXhwIjoxNzI3MjgyMTg1fQ.YcvfOT_l-z4P7tYdSjOBX2eaYQSlrJuwh4d_5NCvGMU' 'http://localhost:3001/api/auth/deriv/get-token'\r"
+expect "# "
+
+send_user "\n📋 Verificando logs após teste...\n"
+send "pm2 logs eon-pro-server --lines 5\r"
+expect "# "
+
+interact

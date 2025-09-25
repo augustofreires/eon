@@ -1,0 +1,49 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🔧 REMOVENDO RATE LIMITING PARA FAZER SERVIDOR FUNCIONAR\n\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+send_user "1. 📋 Fazendo backup do index.js:\n"
+send "cp server/index.js server/index.js.backup.$(date +%Y%m%d_%H%M%S)\r"
+expect "# "
+
+send_user "2. 🔧 Comentando rate limiting:\n"
+send "sed -i '/const limiter = rateLimit/,/app.use.*limiter/ s/^/\\/\\/ /' server/index.js\r"
+expect "# "
+
+send_user "3. 📋 Verificando se foi comentado:\n"
+send "grep -A8 -B2 'limiter.*rateLimit\\|app.use.*limiter' server/index.js\r"
+expect "# "
+
+send_user "4. 🔄 Reiniciando servidor:\n"
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+send_user "5. ⏰ Aguardando inicialização:\n"
+send "sleep 8\r"
+expect "# "
+
+send_user "6. 🧪 TESTE FINAL:\n"
+send "curl -s 'http://localhost:5001/api/health' && echo ' ✅ SERVIDOR FINALMENTE FUNCIONANDO!' || echo ' ❌ CONTINUA QUEBRADO'\r"
+expect "# "
+
+send_user "7. 🔗 Testando através do nginx (porta 80):\n"
+send "curl -s 'http://localhost/api/health' && echo ' ✅ NGINX OK!' || echo ' ❌ NGINX PROBLEM'\r"
+expect "# "
+
+send_user "\n🎯 SE O SERVIDOR ESTIVER FUNCIONANDO, TESTE A TROCA DE CONTA AGORA!\n"
+
+interact

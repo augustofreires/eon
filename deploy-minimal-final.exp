@@ -1,0 +1,58 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+puts "🚀 Deploying minimal version to existing site..."
+
+# Deploy the files to existing location
+spawn scp -r client/build/index.html client/build/asset-manifest.json root@31.97.28.231:/var/www/html/
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    eof {
+        puts "✅ Main files deployed"
+    }
+    timeout {
+        puts "❌ Deploy timeout"
+        exit 1
+    }
+}
+
+# Deploy the static folder
+spawn scp -r client/build/static/ root@31.97.28.231:/var/www/html/
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    eof {
+        puts "✅ Static files deployed"
+    }
+    timeout {
+        puts "❌ Deploy timeout"
+        exit 1
+    }
+}
+
+puts "🎯 Minimal OAuth + Account Switching version deployed!"
+puts "🔗 Test at: https://iaeon.com.br/operations"

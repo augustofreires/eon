@@ -1,0 +1,54 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o PasswordAuthentication=yes -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+    "Are you sure you want to continue connecting" {
+        send "yes\r"
+        exp_continue
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect {
+    "$ " {
+        puts "\n=== CONNECTED TO VPS - CHECKING DEPLOYMENT ==="
+
+        # Check file timestamps
+        send "ls -la /var/www/html/eon/client/src/services/DerivWebSocketService.ts\r"
+        expect "$ "
+
+        send "ls -la /var/www/html/eon/client/src/hooks/useDerivOperations.ts\r"
+        expect "$ "
+
+        send "ls -la /var/www/html/eon/client/src/contexts/AuthContext.tsx\r"
+        expect "$ "
+
+        # Check for critical fixes
+        puts "\n=== CHECKING FOR CRITICAL FIXES ==="
+
+        send "grep -A2 -B2 'Date.now().*Math.floor.*random' /var/www/html/eon/client/src/services/DerivWebSocketService.ts\r"
+        expect "$ "
+
+        send "grep 'cleanupSubscriptions' /var/www/html/eon/client/src/services/DerivWebSocketService.ts\r"
+        expect "$ "
+
+        send "grep 'deriv-account-switched' /var/www/html/eon/client/src/contexts/AuthContext.tsx\r"
+        expect "$ "
+
+        send "exit\r"
+    }
+    "Permission denied" {
+        puts "Authentication failed - trying password login"
+        exit 1
+    }
+}
+
+expect eof

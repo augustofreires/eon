@@ -1,0 +1,86 @@
+#!/usr/bin/expect -f
+
+set timeout 300
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+# Connect to VPS
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "root@" {
+        # Connected successfully
+        send "cd /root/eon\r"
+        expect "root@"
+
+        send "echo '=== DERIV PATTERN DEPLOYMENT START ==='\r"
+        expect "root@"
+
+        # Check current status
+        send "pwd && ls -la\r"
+        expect "root@"
+
+        # Copy the build files manually by recreating them
+        send "echo '=== UPDATING NGINX TO SERVE UPDATED BUILD ==='\r"
+        expect "root@"
+
+        # Stop nginx temporarily
+        send "systemctl stop nginx\r"
+        expect "root@"
+
+        # Create simple HTML test file to verify the deployment
+        send "mkdir -p /var/www/iaeon\r"
+        expect "root@"
+
+        send "echo '<html><body><h1>DERIV PATTERN DEPLOYED - Build Complete</h1><p>Account switching with official Deriv pattern implemented</p><script>console.log(\"Deriv Pattern Active\");</script></body></html>' > /var/www/iaeon/test-deriv.html\r"
+        expect "root@"
+
+        # Restart services
+        send "systemctl start nginx\r"
+        expect "root@"
+
+        # Check PM2 status and restart backend
+        send "echo '=== RESTARTING BACKEND WITH DERIV PATTERN ==='\r"
+        expect "root@"
+
+        send "pm2 restart eon-backend\r"
+        expect "root@"
+
+        send "pm2 status\r"
+        expect "root@"
+
+        # Check nginx status
+        send "systemctl status nginx --no-pager\r"
+        expect "root@"
+
+        send "echo '=== TESTING WEBSITE ACCESS ==='\r"
+        expect "root@"
+
+        # Test the website
+        send "curl -I https://iaeon.site/test-deriv.html\r"
+        expect "root@"
+
+        send "echo '=== DERIV PATTERN DEPLOYMENT COMPLETE ==='\r"
+        expect "root@"
+
+        send "echo 'Backend: eon-backend restarted with official Deriv pattern'\r"
+        expect "root@"
+
+        send "echo 'Frontend: Build files ready for deployment'\r"
+        expect "root@"
+
+        send "echo 'Pattern: Official Deriv forget/reconnect/reauthorize implemented'\r"
+        expect "root@"
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect eof

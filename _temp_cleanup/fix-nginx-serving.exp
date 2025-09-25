@@ -1,0 +1,75 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        # 1. First verify current nginx files
+        send "echo '=== Step 1: Verify current nginx files ==='\r"
+        expect "# "
+        send "ls -la /var/www/html/\r"
+        expect "# "
+
+        # 2. Remove ALL old files
+        send "echo '=== Step 2: Remove ALL old files ==='\r"
+        expect "# "
+        send "rm -rf /var/www/html/*\r"
+        expect "# "
+
+        # 3. Copy new build files
+        send "echo '=== Step 3: Copy new build files ==='\r"
+        expect "# "
+        send "cp -r /root/eon/client/build/* /var/www/html/\r"
+        expect "# "
+
+        # 4. Set correct permissions
+        send "echo '=== Step 4: Set correct permissions ==='\r"
+        expect "# "
+        send "chown -R www-data:www-data /var/www/html/\r"
+        expect "# "
+
+        # 5. Verify new files are there
+        send "echo '=== Step 5: Verify new files are there ==='\r"
+        expect "# "
+        send "ls -la /var/www/html/static/js/\r"
+        expect "# "
+
+        # 6. Check the main.js file timestamp
+        send "echo '=== Step 6: Check main.js file timestamp ==='\r"
+        expect "# "
+        send "stat /var/www/html/static/js/main.*.js\r"
+        expect "# "
+
+        # 7. Clear nginx cache
+        send "echo '=== Step 7: Clear nginx cache ==='\r"
+        expect "# "
+        send "systemctl reload nginx\r"
+        expect "# "
+
+        # 8. Test with curl
+        send "echo '=== Step 8: Test with curl ==='\r"
+        expect "# "
+        send "curl -I https://iaeon.site/static/js/\r"
+        expect "# "
+
+        # Final verification
+        send "echo '=== Final: Verify everything is working ==='\r"
+        expect "# "
+        send "ls -la /var/www/html/ | head -20\r"
+        expect "# "
+
+        send "exit\r"
+        expect eof
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}

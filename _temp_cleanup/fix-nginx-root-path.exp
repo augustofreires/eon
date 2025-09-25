@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+
+# Corrigir caminho root do nginx
+set timeout 120
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "🔧 CORREÇÃO: Nginx está procurando arquivos no diretório errado\n"
+
+# Verificar onde nginx está procurando
+send_user "❌ NGINX PROCURA EM: /usr/share/nginx/html/\n"
+send_user "✅ ARQUIVOS ESTÃO EM: /var/www/html/\n"
+
+# Copiar arquivos para o diretório que nginx está procurando
+send "mkdir -p /usr/share/nginx/html/static/js/\r"
+expect "# "
+
+send "mkdir -p /usr/share/nginx/html/static/css/\r"
+expect "# "
+
+send "cp -r /var/www/html/* /usr/share/nginx/html/\r"
+expect "# "
+
+# Verificar se copiou corretamente
+send "ls -la /usr/share/nginx/html/static/js/\r"
+expect "# "
+
+send "ls -la /usr/share/nginx/html/static/css/\r"
+expect "# "
+
+# Ajustar permissões
+send "chown -R www-data:www-data /usr/share/nginx/html/\r"
+expect "# "
+
+send "chmod -R 755 /usr/share/nginx/html/\r"
+expect "# "
+
+# Testar acesso direto
+send "curl -I http://localhost/static/js/main.dba72426.js\r"
+expect "# "
+
+send_user "✅ CORREÇÃO APLICADA: Arquivos copiados para diretório correto\n"
+
+interact

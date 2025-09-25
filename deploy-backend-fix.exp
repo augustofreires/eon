@@ -1,0 +1,76 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        puts "🔧 Uploading backend fixes..."
+        send "exit\r"
+    }
+}
+
+# Upload the fixed auth.js file
+spawn scp server/routes/auth.js root@31.97.28.231:/root/eon/server/routes/
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    eof {
+        puts "✅ Backend file uploaded"
+    }
+}
+
+# Restart the server
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        puts "🔄 Restarting PM2 server..."
+        send "pm2 restart eon-final\r"
+        expect "# "
+
+        send "pm2 status\r"
+        expect "# "
+
+        puts "✅ Backend restarted - OAuth fixes deployed!"
+        send "exit\r"
+    }
+}
+
+puts "🎯 Frontend and Backend OAuth fixes deployed!"

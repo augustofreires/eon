@@ -1,0 +1,33 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "\n🚀 TESTANDO CORREÇÃO FINAL - TROQUE DE CONTA AGORA!\n"
+send_user "📡 Monitorando logs em tempo real após deploy...\n\n"
+
+# Monitorar logs com timestamp
+send "pm2 logs eon-pro-server --lines 0 --timestamp | grep --line-buffered -E 'switch-account|CRITICAL|Account mismatch|POST|200|400' &\r"
+expect "# "
+
+send_user "\n⏰ AGUARDE 30 SEGUNDOS - TROQUE DE CONTA AGORA!\n"
+send "sleep 30\r"
+expect "# "
+
+send "pkill tail\r"
+expect "# "
+
+send_user "\n✅ TESTE CONCLUÍDO!\n"
+
+interact

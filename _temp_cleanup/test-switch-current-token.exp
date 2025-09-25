@@ -1,0 +1,43 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "🧪 TESTANDO SWITCH-ACCOUNT COM TOKEN ATUAL DO BROWSER...\n"
+send_user "📋 Verificando logs em tempo real...\n"
+
+# Primeiro iniciar monitoramento de logs em background
+send "pm2 logs eon-pro-server --lines 0 > /tmp/switch_test.log 2>&1 &\r"
+expect "# "
+
+# Aguardar um momento
+send "sleep 2\r"
+expect "# "
+
+send_user "\n🔍 Agora testando switch-account (você deve tentar trocar de conta no site AGORA):\n"
+send "timeout 30s tail -f /tmp/switch_test.log | grep -E 'switch-account|get-token|CRITICAL|Account mismatch|400|POST|GET' &\r"
+expect "# "
+
+send_user "\n⏰ AGUARDANDO POR 20 SEGUNDOS - TROQUE DE CONTA AGORA!\n"
+send "sleep 20\r"
+expect "# "
+
+send "pkill tail\r"
+expect "# "
+
+send_user "\n📋 Logs capturados:\n"
+send "cat /tmp/switch_test.log | tail -20\r"
+expect "# "
+
+interact

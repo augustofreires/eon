@@ -24,10 +24,11 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../contexts/AuthContext';
 
 interface DerivAccount {
-  id: string;
-  balance: number;
+  loginid: string;
+  balance?: number;
   currency: string;
   is_virtual: boolean;
+  token?: string;
   fullname?: string;
   email?: string;
 }
@@ -82,17 +83,64 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
 
   const loadAccountInfo = async () => {
     if (!isConnected) return;
-    
+
     try {
       setLoading(true);
-      const response = await axios.get('/api/auth/deriv/account-info');
-      setAccountInfo(response.data);
-      
-      if (response.data.warning) {
-        toast.error(response.data.warning);
+
+      // CORREÇÃO: Usar WebSocket para obter saldos reais das contas
+      const wsService = (await import('../services/DerivWebSocketService')).default.getInstance();
+
+      if (wsService.getConnectionStatus()) {
+        // Buscar saldo da conta atual via WebSocket
+        const balance = await wsService.getBalance();
+
+        if (balance) {
+          console.log('✅ DerivAccountPanel: Saldo obtido via WebSocket:', {
+            loginid: balance.loginid,
+            balance: balance.balance,
+            currency: balance.currency,
+            is_virtual: balance.is_virtual
+          });
+
+          // Criar estrutura de accountInfo compatível
+          setAccountInfo({
+            account: {
+              loginid: balance.loginid,
+              balance: balance.balance,
+              currency: balance.currency,
+              is_virtual: balance.is_virtual,
+              fullname: user?.deriv_fullname || 'Usuário Deriv',
+              email: user?.deriv_email || 'user@example.com'
+            },
+            transactions: [], // Pode ser preenchido posteriormente
+            profit_loss: {
+              today: 0,
+              total: 0
+            },
+            available_accounts: availableAccounts.map(acc => ({
+              loginid: acc.loginid,
+              currency: acc.currency,
+              is_virtual: acc.is_virtual
+            }))
+          });
+        } else {
+          console.warn('⚠️ DerivAccountPanel: Não foi possível obter saldo via WebSocket');
+          // Fallback para API REST
+          const response = await axios.get('/api/auth/deriv/account-info');
+          setAccountInfo(response.data);
+        }
+      } else {
+        console.warn('⚠️ DerivAccountPanel: WebSocket não conectado, usando API REST');
+        // Fallback para API REST
+        const response = await axios.get('/api/auth/deriv/account-info');
+        setAccountInfo(response.data);
+
+        if (response.data.warning) {
+          toast.error(response.data.warning);
+        }
       }
     } catch (error: any) {
-      console.error('Erro ao carregar informações da conta:', error);
+      console.error('❌ Erro ao carregar informações da conta:', error);
       toast.error('Erro ao carregar informações da conta Deriv');
     } finally {
       setLoading(false);
@@ -151,10 +199,39 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
 
       console.log('✅ DerivAccountPanel: Switch concluído, recarregando informações...');
 
-      // Recarregar informações da conta após trocar
-      setTimeout(() => {
-        loadAccountInfo();
-      }, 1500); // Aumentar delay para garantir que o backend processou
+      // Recarregar informações da conta após trocar - com retry e delay maior
+      const reloadWithRetry = async (attempts = 5) => {
+        for (let i = 0; i < attempts; i++) {
+          // Delays progressivos: 1s, 2s, 3s, 4s, 5s
+          const delay = 1000 * (i + 1);
+          console.log(`⏳ DerivAccountPanel: Aguardando ${delay}ms antes da tentativa ${i + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+
+          try {
+            console.log(`🔄 DerivAccountPanel: Tentativa ${i + 1} de ${attempts} - Recarregando account-info...`);
+            await loadAccountInfo();
+            console.log(`✅ DerivAccountPanel: Informações recarregadas com sucesso na tentativa ${i + 1}`);
+
+            // Verificar se a conta mudou realmente
+            if (accountInfo?.account?.loginid === account.loginid) {
+              console.log(`✅ DerivAccountPanel: Conta corretamente atualizada para ${account.loginid}`);
+              break;
+            } else {
+              console.log(`⚠️ DerivAccountPanel: Conta ainda não atualizou (esperado: ${account.loginid}, atual: ${accountInfo?.account?.loginid})`);
+              if (i === attempts - 1) {
+                console.error('❌ DerivAccountPanel: Conta não foi atualizada após todas as tentativas');
+              }
+            }
+          } catch (error) {
+            console.log(`⚠️ DerivAccountPanel: Tentativa ${i + 1} falhou:`, error);
+            if (i === attempts - 1) {
+              console.error('❌ DerivAccountPanel: Todas as tentativas de reload falharam');
+            }
+          }
+        }
+      };
+
+      reloadWithRetry();
     } catch (error: any) {
       console.error('❌ DerivAccountPanel: Erro ao trocar conta:', error);
       toast.error('Erro ao trocar conta Deriv');
@@ -226,7 +303,7 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
               {accountInfo?.account.is_virtual ? 'Conta Virtual' : 'Conta Real'}
             </Typography>
             <Chip 
-              label={accountInfo?.account.id || 'N/A'} 
+              label={accountInfo?.account.loginid || 'N/A'} 
               size="small" 
               sx={{ 
                 bgcolor: 'rgba(0, 212, 170, 0.2)', 
@@ -256,7 +333,7 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
             }}
             onClick={handleAccountMenuOpen}
           >
-            {accountInfo ? formatBalance(accountInfo.account.balance, accountInfo.account.currency) : '$ 0,00 USD'}
+            {accountInfo ? formatBalance(accountInfo.account.balance || 0, accountInfo.account.currency) : '$ 0,00 USD'}
             <ExpandMore sx={{ color: '#B0B0B0', fontSize: '0.9rem', ml: 0.5 }} />
           </Typography>
           
@@ -363,7 +440,7 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
                     {accountInfo?.account.is_virtual ? 'Conta Virtual' : 'Conta Real'}
                   </Typography>
                   <Chip 
-                    label={accountInfo?.account.id || 'N/A'} 
+                    label={accountInfo?.account.loginid || 'N/A'} 
                     size="small" 
                     sx={{ 
                       bgcolor: 'rgba(0, 212, 170, 0.2)', 
@@ -384,7 +461,7 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
                     }}
                     onClick={handleAccountMenuOpen}
                   >
-                    {accountInfo ? formatBalance(accountInfo.account.balance, accountInfo.account.currency) : '$ 0,00 USD'}
+                    {accountInfo ? formatBalance(accountInfo.account.balance || 0, accountInfo.account.currency) : '$ 0,00 USD'}
                   </Typography>
                   <ExpandMore sx={{ color: '#B0B0B0', fontSize: '1rem' }} />
                   <IconButton 

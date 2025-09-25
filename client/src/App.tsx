@@ -27,7 +27,7 @@ import ActionCardsPage from './pages/admin/ActionCardsPage';
 import ClientDashboard from './pages/client/Dashboard';
 import ClientBotsPage from './pages/client/BotsPage';
 import CoursesPage from './pages/CoursesPage';
-import OperationsPage from './pages/OperationsPage';
+import OperationsMinimal from './pages/OperationsMinimal';
 import BankManagementPage from './pages/BankManagementPage';
 import CurrencyConverterPage from './pages/CurrencyConverterPage';
 import UsefulLinksPage from './pages/UsefulLinksPage';
@@ -241,7 +241,7 @@ function AppContent() {
         <Route path="/operations" element={
           <ProtectedRoute>
             <Layout>
-              <OperationsPage />
+              <OperationsMinimal />
             </Layout>
           </ProtectedRoute>
         } />

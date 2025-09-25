@@ -1,0 +1,62 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "root@"
+    }
+}
+
+send "cd /root/eon\r"
+expect "root@"
+
+# Test backend on port 5000
+send "curl -s http://localhost:5000/api/test\r"
+expect "root@"
+
+# Check server configuration
+send "grep -n 'PORT\\|port' server/index.js | head -5\r"
+expect "root@"
+
+# Check environment variables
+send "grep -n 'PORT\\|port' server/.env 2>/dev/null || echo 'No .env file'\r"
+expect "root@"
+
+# Test the account switch API on correct port
+send "curl -s -X POST http://localhost:5000/api/auth/deriv/switch-account -H 'Content-Type: application/json' -d '{\"is_virtual\": true, \"loginid\": \"VRT123\"}'\r"
+expect "root@"
+
+# Check nginx config to see if it's proxying to correct port
+send "grep -n 'localhost:' /etc/nginx/sites-available/iaeon.site\r"
+expect "root@"
+
+# Update nginx to proxy to port 5000 instead of 3001
+send "sed -i 's/localhost:3001/localhost:5000/g' /etc/nginx/sites-available/iaeon.site\r"
+expect "root@"
+
+# Verify the change
+send "grep -n 'localhost:' /etc/nginx/sites-available/iaeon.site\r"
+expect "root@"
+
+# Reload nginx
+send "nginx -t && systemctl reload nginx\r"
+expect "root@"
+
+# Test the API through nginx
+send "curl -s https://iaeon.site/api/test\r"
+expect "root@"
+
+send "echo 'Backend port fixed! Testing account switch...'\r"
+expect "root@"
+
+# Now test account switching with proper monitoring
+send "pm2 logs iaeon-server --lines 0 --raw &\r"
+expect "root@"
+
+send "echo 'Ready for account switching test. Please switch accounts now.'\r"
+expect "root@"
+
+interact

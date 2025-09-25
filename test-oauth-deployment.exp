@@ -1,0 +1,42 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        puts "🔍 Checking deployed files..."
+        send "ls -la /var/www/iaeon.site/static/js/\r"
+        expect "# "
+
+        puts "🔍 Checking main HTML file for OperationsMinimal..."
+        send "grep -i operations /var/www/iaeon.site/index.html\r"
+        expect "# "
+
+        puts "🔍 Checking if site is accessible..."
+        send "curl -I https://iaeon.site/operations\r"
+        expect "# "
+
+        puts "🔍 Testing operations page direct access..."
+        send "curl -s https://iaeon.site/operations?acct1=TEST&token1=TEST | head -20\r"
+        expect "# "
+
+        puts "✅ Deployment verified - OAuth parameter detection should be working!"
+        send "exit\r"
+    }
+}
+
+puts "🎯 OAuth deployment verification completed!"

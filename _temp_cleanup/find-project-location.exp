@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o PasswordAuthentication=yes -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "# "
+
+puts "\n=== SEARCHING FOR PROJECT LOCATION ==="
+
+# Check common locations
+send "find /var/www -name 'DerivWebSocketService.ts' 2>/dev/null\r"
+expect "# "
+
+send "find /home -name 'DerivWebSocketService.ts' 2>/dev/null\r"
+expect "# "
+
+send "find /opt -name 'DerivWebSocketService.ts' 2>/dev/null\r"
+expect "# "
+
+send "find /root -name 'DerivWebSocketService.ts' 2>/dev/null\r"
+expect "# "
+
+puts "\n=== CHECKING COMMON PROJECT DIRECTORIES ==="
+
+send "ls -la /var/www/\r"
+expect "# "
+
+send "ls -la /home/\r"
+expect "# "
+
+send "ls -la /opt/\r"
+expect "# "
+
+puts "\n=== CHECKING FOR EON PROJECT DIRECTORY ==="
+
+send "find /var -name '*eon*' -type d 2>/dev/null\r"
+expect "# "
+
+send "find /home -name '*eon*' -type d 2>/dev/null\r"
+expect "# "
+
+send "find /opt -name '*eon*' -type d 2>/dev/null\r"
+expect "# "
+
+puts "\n=== CHECKING FOR ANY DERIV-RELATED FILES ==="
+
+send "find /var/www -name '*deriv*' 2>/dev/null\r"
+expect "# "
+
+send "find /var/www -name '*Deriv*' 2>/dev/null\r"
+expect "# "
+
+puts "\n=== CHECKING NGINX CONFIGURATION ==="
+
+send "cat /etc/nginx/sites-enabled/* | grep root\r"
+expect "# "
+
+puts "\n=== SEARCH COMPLETE ==="
+
+send "exit\r"
+expect eof

@@ -1,0 +1,121 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "# "
+    }
+    "# " {
+        # Already connected
+    }
+}
+
+# Step 1: Navigate to project and check files
+send "cd /root/eon\r"
+expect "# "
+
+send "pwd && ls -la client/src/services/DerivWebSocketService.*\r"
+expect "# "
+
+# Step 2: Restore from backup
+send "cp client/src/services/DerivWebSocketService.bak client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+send "echo 'Backup restored successfully'\r"
+expect "# "
+
+# Step 3: Check current file structure to find the class closing brace
+send "tail -10 client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Step 4: Find line number of class closing brace
+send "grep -n '^}$' client/src/services/DerivWebSocketService.ts | tail -1\r"
+expect "# "
+
+# Step 5: Add the balance subscription function INSIDE the class
+send "cat > /tmp/balance_function.ts << 'FUNC_EOF'
+
+  /**
+   * PADRÃO OFICIAL DERIV: Subscribe to balance updates after authorization
+   */
+  private subscribeToBalanceUpdates(): void {
+    console.log('💰 Subscribing to balance updates (official Deriv pattern)...');
+
+    const request = {
+      balance: 1,
+      subscribe: 1,
+      req_id: this.generateRequestId('balance_sub')
+    };
+
+    this.subscribers.set('balance_updates', {
+      onConnection: (data: any) => {
+        if (data.balance) {
+          console.log('💰 DERIV PATTERN: Balance update received:', data.balance);
+          this.notifySubscribers('onBalance', {
+            balance: data.balance.balance,
+            currency: data.balance.currency,
+            loginid: data.balance.loginid || this.currentAccount
+          });
+        }
+      }
+    });
+
+    this.send(request);
+    console.log('✅ Balance subscription request sent');
+  }
+FUNC_EOF\r"
+expect "# "
+
+# Step 6: Insert the function before the final closing brace
+send "head -n 719 client/src/services/DerivWebSocketService.ts > /tmp/before_class_end.ts\r"
+expect "# "
+
+send "cat /tmp/before_class_end.ts /tmp/balance_function.ts > /tmp/new_service.ts\r"
+expect "# "
+
+send "tail -n +720 client/src/services/DerivWebSocketService.ts >> /tmp/new_service.ts\r"
+expect "# "
+
+send "cp /tmp/new_service.ts client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Step 7: Add the function call after authorization
+send "sed -i 's/this.notifySubscribers.*onAuthorize.*data.*/&\\n        this.subscribeToBalanceUpdates();/' client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Step 8: Verify the changes
+send "echo 'Checking if function was added correctly...'\r"
+expect "# "
+
+send "grep -A 5 -B 5 'subscribeToBalanceUpdates' client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Step 9: Build the project
+send "echo 'Building project...'\r"
+expect "# "
+
+send "cd client && npm run build\r"
+expect {
+    "# " { }
+    timeout {
+        send "\\003"
+        expect "# "
+    }
+}
+
+# Step 10: Reload nginx
+send "cd /root/eon && systemctl reload nginx\r"
+expect "# "
+
+send "echo 'DEPLOYMENT COMPLETED SUCCESSFULLY'\r"
+expect "# "
+
+send "exit\r"
+expect eof

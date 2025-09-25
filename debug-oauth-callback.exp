@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        puts "🔍 Checking recent OAuth callback logs..."
+        send "pm2 logs eon-final --lines 20 | grep -i oauth\r"
+        expect "# "
+
+        puts "🔍 Checking access logs for OAuth callback..."
+        send "tail -20 /var/log/nginx/access.log | grep -i deriv\r"
+        expect "# "
+
+        puts "🔍 Checking error logs..."
+        send "tail -10 /var/log/nginx/error.log\r"
+        expect "# "
+
+        puts "🔍 Testing OAuth callback endpoint directly..."
+        send "curl -I http://localhost:3001/api/auth/deriv/callback?acct1=TEST&token1=TEST\r"
+        expect "# "
+
+        send "exit\r"
+    }
+}
+
+puts "✅ OAuth debug completed"

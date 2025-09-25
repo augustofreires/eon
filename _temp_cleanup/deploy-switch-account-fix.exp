@@ -1,0 +1,70 @@
+#!/usr/bin/expect -f
+
+# Deploy da correção crítica do switch-account
+set timeout 300
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "🚀 DEPLOY: CORREÇÃO CRÍTICA DO SWITCH-ACCOUNT\n"
+send_user "🎯 CORRIGINDO: Removendo validação que bloqueia o switch\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+# Fazer backup
+send "cp server/routes/auth.js server/routes/auth.js.backup.switch-fix.\$(date +%Y%m%d_%H%M%S)\r"
+expect "# "
+
+send_user "📤 Fazendo upload da correção...\n"
+
+# Upload do arquivo corrigido
+send "exit\r"
+expect eof
+
+# Fazer upload usando scp
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no "/Users/augustofreires/Desktop/Bots deriv/server/routes/auth.js" root@31.97.28.231:/root/eon/server/routes/auth.js
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect eof
+
+# Reconectar para reiniciar o servidor
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "🔄 Reiniciando servidor com correção...\n"
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+send_user "✅ CORREÇÃO CRÍTICA DEPLOYADA!\n"
+send_user "\n🔧 CORREÇÃO APLICADA:\n"
+send_user "   ✅ Removida validação que bloqueava account switch\n"
+send_user "   ✅ Agora permite atualização do banco de dados\n"
+send_user "   ✅ Account mismatch não bloqueia mais o switch\n"
+send_user "\n🧪 TESTE AGORA:\n"
+send_user "   1. Abra https://iaeon.site\n"
+send_user "   2. Troque de conta\n"
+send_user "   3. DEVE FUNCIONAR SEM ERRO 400!\n"
+send_user "   4. Balance deve atualizar corretamente!\n"
+
+interact

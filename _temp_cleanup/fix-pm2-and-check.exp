@@ -1,0 +1,58 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🔧 CORRIGINDO PM2 E VERIFICANDO ARQUIVOS...\n\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+send_user "1. 🚨 Verificando qual auth.js está sendo usado:\n"
+send "ps aux | grep 'node.*server/index.js'\r"
+expect "# "
+
+send_user "\n2. 📋 Verificando diferenças entre os auth.js:\n"
+send "wc -l /root/eon/server/routes/auth.js /root/bots-deriv/auth.js\r"
+expect "# "
+
+send_user "\n3. 🔄 Parando PM2 e recriando em cluster mode:\n"
+send "pm2 stop eon-pro-server\r"
+expect "# "
+send "pm2 delete eon-pro-server\r"
+expect "# "
+
+send_user "\n4. 🚀 Iniciando PM2 em cluster mode:\n"
+send "pm2 start server/index.js --name eon-pro-server -i 1\r"
+expect "# "
+
+send_user "\n5. 📊 Verificando status do PM2:\n"
+send "pm2 describe eon-pro-server | grep -A2 -B2 'exec mode'\r"
+expect "# "
+
+send_user "\n6. 🧪 Testando servidor após correção:\n"
+send "sleep 3\r"
+expect "# "
+send "curl -s 'http://localhost:3000/api/health' || echo 'Server not responding'\r"
+expect "# "
+
+send_user "\n7. 📡 Monitorando logs para teste final:\n"
+send "pm2 logs eon-pro-server --lines 0 | grep --line-buffered -E 'Started|get-token|switch-account|CRITICAL|Error' &\r"
+expect "# "
+
+send_user "\n⏰ AGORA TESTE A TROCA DE CONTA POR 15 SEGUNDOS!\n"
+send "sleep 15\r"
+expect "# "
+
+send "pkill tail\r"
+expect "# "
+
+interact

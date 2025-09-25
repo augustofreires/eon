@@ -1,0 +1,47 @@
+#!/usr/bin/expect -f
+
+# Aplicar validação de conta diretamente no servidor
+set timeout 120
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "✅ Conectado - Aplicando validação crítica\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+# Aplicar a correção após linha 1988 onde acontece a autorização
+send_user "🔧 Inserindo validação de conta após linha 1988...\n"
+
+# Inserir validação após a linha que verifica 'response.authorize'
+send "sed -i '1995a\\n              // CRITICAL: Validate requested account matches authorized account\\n              const authorizedLoginId = response.authorize.loginid;\\n              const requestedLoginId = targetAccount.loginid;\\n              \\n              if (authorizedLoginId !== requestedLoginId) {\\n                console.error(`❌ CRITICAL: Account mismatch detected!`, {\\n                  requested: requestedLoginId,\\n                  authorized: authorizedLoginId\\n                });\\n                clearTimeout(timeout);\\n                ws.close();\\n                reject(new Error(`Account mismatch: requested \${requestedLoginId} but got \${authorizedLoginId}`));\\n                return;\\n              }\\n              \\n              console.log(`✅ Account validation passed: \${authorizedLoginId}`);\\n' server/routes/auth.js\r"
+
+expect "# "
+send_user "✅ Validação aplicada\n"
+
+# Verificar se a correção foi aplicada
+send "grep -n -A5 -B2 'Account mismatch' server/routes/auth.js\r"
+expect "# "
+
+send_user "🔄 Reiniciando servidor...\n"
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+send "sleep 3\r"
+expect "# "
+
+# Verificar status
+send "pm2 status\r"
+expect "# "
+
+send_user "✅ CORREÇÃO APLICADA E SERVIDOR REINICIADO\n"
+send_user "🎯 Sistema agora valida contas na troca\n"
+
+interact

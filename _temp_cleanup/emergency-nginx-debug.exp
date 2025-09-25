@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+
+set timeout 15
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Check actual nginx config
+send "cat /etc/nginx/sites-available/iaeon.site | grep -A5 -B5 proxy_pass\r"
+expect "# "
+
+# Check nginx error logs
+send "tail -5 /var/log/nginx/error.log\r"
+expect "# "
+
+# Try different proxy configurations
+send "cp /etc/nginx/sites-available/iaeon.site /etc/nginx/sites-available/iaeon.site.backup\r"
+expect "# "
+
+# Update proxy to use correct format
+send "sed -i 's|proxy_pass http://localhost:3001|proxy_pass http://127.0.0.1:3001|g' /etc/nginx/sites-available/iaeon.site\r"
+expect "# "
+
+# Reload nginx again
+send "nginx -t && systemctl reload nginx\r"
+expect "# "
+
+# Test again
+send "curl -X POST https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@iaeon.com\",\"password\":\"123456\"}' -k\r"
+expect "# "
+
+send "exit\r"
+expect eof

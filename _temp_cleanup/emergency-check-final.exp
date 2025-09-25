@@ -1,0 +1,25 @@
+#!/usr/bin/expect -f
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Check what port the server is now on
+send "netstat -tlnp | grep node\r"
+expect "# "
+
+send "netstat -tlnp | grep 3001\r"
+expect "# "
+
+# Check PM2 logs
+send "pm2 logs eon-pro-server --lines 5\r"
+expect "# "
+
+# Test direct connection
+send "curl -s http://localhost:3001/api/health 2>/dev/null || echo 'NO CONNECTION'\r"
+expect "# "
+
+send "exit\r"
+expect eof

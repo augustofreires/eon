@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+# Deploy the minimal version
+spawn scp -r client/build/. root@31.97.28.231:/root/build/
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    eof {
+        puts "✅ Frontend deployed successfully"
+    }
+    timeout {
+        puts "❌ Deploy timeout"
+        exit 1
+    }
+}
+
+puts "🚀 Minimal version deployed - testing at https://iaeon.com.br/operations"

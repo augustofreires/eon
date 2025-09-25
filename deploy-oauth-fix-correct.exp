@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+# Upload frontend build
+spawn scp -r build/* root@31.97.28.231:/var/www/iaeon.site/
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    eof {
+        puts "✅ Frontend uploaded successfully"
+    }
+}
+
+# Connect to server to check deployment
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        puts "🔄 Restarting Nginx..."
+        send "systemctl reload nginx\r"
+        expect "# "
+
+        puts "🔍 Checking if files are deployed correctly..."
+        send "ls -la /var/www/iaeon.site/static/js/ | head -5\r"
+        expect "# "
+
+        puts "✅ OAuth fix deployed - ready for testing!"
+        send "exit\r"
+    }
+}
+
+puts "🎯 OAuth parameter detection deployed successfully!"

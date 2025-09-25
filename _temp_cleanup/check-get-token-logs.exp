@@ -1,0 +1,28 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "🔍 VERIFICANDO SE /GET-TOKEN LOGS APARECEM...\n"
+send_user "⚡ Procurando por logs críticos do get-token...\n"
+
+# Buscar logs específicos do nosso endpoint crítico
+send "pm2 logs eon-pro-server --lines 100 | grep -A3 -B3 'CRITICAL.*Getting token\\|CRITICAL.*Found specific token\\|token.*ACCOUNT_SPECIFIC\\|token.*DEFAULT'\r"
+expect "# "
+
+send_user "\n🔍 Verificando se endpoint get-token está sendo chamado:\n"
+send "pm2 logs eon-pro-server --lines 100 | grep -A2 -B2 '/deriv/get-token\\|get-token'\r"
+expect "# "
+
+interact

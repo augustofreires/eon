@@ -1,0 +1,38 @@
+#!/usr/bin/expect -f
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+puts "🔍 Verifying deployment on VPS..."
+
+spawn ssh root@31.97.28.231
+expect {
+  "Enter passphrase for key" { interact -o "\n" }
+  "assword:" { send "$password\r" }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+puts "📋 Checking DerivWebSocketService.ts..."
+send "grep -n 'cleanupSubscriptions' client/src/services/DerivWebSocketService.ts | head -3\r"
+expect "# "
+
+puts "📋 Checking useDerivOperations.ts..."
+send "grep -n 'switchAccount.*useCallback' client/src/hooks/useDerivOperations.ts\r"
+expect "# "
+
+puts "📋 Checking AuthContext.tsx..."
+send "grep -n 'deriv-account-switched' client/src/contexts/AuthContext.tsx\r"
+expect "# "
+
+puts "📋 Checking file timestamps..."
+send "ls -la client/src/services/DerivWebSocketService.ts client/src/hooks/useDerivOperations.ts client/src/contexts/AuthContext.tsx\r"
+expect "# "
+
+puts "📋 PM2 status..."
+send "pm2 status\r"
+expect "# "
+
+puts "🎯 Verification complete. Keeping session open for fixes..."
+interact

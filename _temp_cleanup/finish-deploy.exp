@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🚀 FINALIZANDO DEPLOY...\n"
+
+send "cd /root/eon/client\r"
+expect "# "
+
+send_user "📂 Copiando build para nginx...\n"
+send "cp -r build/* /usr/share/nginx/html/\r"
+expect "# "
+
+send_user "🔄 Reiniciando servidor...\n"
+send "cd /root/eon\r"
+expect "# "
+
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+send_user "\n✅ CORREÇÃO COMPLETA DEPLOYADA!\n"
+send_user "\n🔧 CORREÇÕES APLICADAS:\n"
+send_user "   ✅ Backend: /get-token retorna token específico\n"
+send_user "   ✅ Backend: Account mismatch bypass ativo\n"
+send_user "   ✅ Frontend: WebSocket reconecta com token correto\n"
+send_user "   ✅ Frontend: Balance atualiza após switch\n"
+send_user "\n🧪 TESTE FINAL:\n"
+send_user "   1. Abra https://iaeon.site/operations\n"
+send_user "   2. Troque de conta (qualquer uma)\n"
+send_user "   3. BALANCE DEVE ATUALIZAR EM 3-5 SEGUNDOS! ✨\n"
+
+interact

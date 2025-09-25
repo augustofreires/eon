@@ -1,0 +1,27 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "🔍 VERIFICANDO LOGS MAIS RECENTES DE SWITCH-ACCOUNT...\n"
+
+# Verificar últimos logs de erro
+send "pm2 logs eon-pro-server --lines 100 | grep -A5 -B5 'INICIO SWITCH-ACCOUNT\\|Account mismatch\\|switch-account.*400\\|POST.*switch-account' | tail -30\r"
+expect "# "
+
+send_user "\n🔍 Verificando requisições HTTP recentes:\n"
+send "pm2 logs eon-pro-server --lines 50 | grep -E 'POST.*switch-account|GET.*get-token' | tail -10\r"
+expect "# "
+
+interact

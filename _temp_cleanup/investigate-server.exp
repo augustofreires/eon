@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "Connected"
+    }
+}
+
+send "cd /root/eon\r"
+expect "# "
+
+puts "Checking server configuration..."
+send "cat server/database/connection.js | grep -E \"host|port|database|user\"\r"
+expect "# "
+
+puts "Checking what port the server is actually running on..."
+send "netstat -tlnp | grep node\r"
+expect "# "
+
+puts "Checking PM2 config..."
+send "pm2 show iaeon-server | grep -E \"script|port\"\r"
+expect "# "
+
+puts "Checking if PostgreSQL is running..."
+send "systemctl status postgresql\r"
+expect "# "
+
+interact

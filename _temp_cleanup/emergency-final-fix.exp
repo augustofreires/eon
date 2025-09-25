@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Update .env to force IPv4 binding
+send "cd /root/eon\r"
+expect "# "
+
+send "grep -n 'PORT' .env\r"
+expect "# "
+
+# Update to bind to 0.0.0.0 instead of default
+send "sed -i 's/PORT=5001/PORT=3001/' .env\r"
+expect "# "
+
+send "echo 'HOST=0.0.0.0' >> .env\r"
+expect "# "
+
+# Restart PM2 server
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+# Wait a moment
+send "sleep 3\r"
+expect "# "
+
+# Test the fix
+send "curl -s 'https://iaeon.site/api/auth/login' -H 'Content-Type: application/json' -d '{\"email\":\"admin@iaeon.com\",\"password\":\"123456\"}' -k\r"
+expect "# "
+
+send "exit\r"
+expect eof

@@ -88,7 +88,7 @@ app.use('*', (req, res) => {
 });
 
 // Inicialização do servidor
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📊 Ambiente: ${process.env.NODE_ENV}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);

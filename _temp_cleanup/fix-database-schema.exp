@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "🔧 CORRIGINDO CONFLITOS NO BANCO DE DADOS\n\n"
+
+send_user "1. Parando servidor com problema\n"
+send "pm2 stop eon-clean\r"
+expect "# "
+
+send_user "\n2. Verificando qual coluna está causando conflito\n"
+send "pm2 logs eon-clean --err --lines 20 | grep -i 'column\\|collision'\r"
+expect "# "
+
+send_user "\n3. Removendo tentativas de criar colunas duplicadas\n"
+send "find server -name '*.js' -exec grep -l 'ADD COLUMN.*profile_picture\\|ADD COLUMN.*online_users_count\\|ADD COLUMN.*courses_banner_url\\|ADD COLUMN.*hide_title' {} \;\r"
+expect "# "
+
+send_user "\n4. Comentando criação de colunas duplicadas (profile.js)\n"
+send "sed -i '/ALTER TABLE users ADD COLUMN profile_picture/,/^$/s/^/\\/\\/ /' server/routes/profile.js 2>/dev/null || echo 'profile.js not found or already fixed'\r"
+expect "# "
+
+send_user "\n5. Reiniciando servidor limpo\n"
+send "pm2 restart eon-clean\r"
+expect "# "
+
+send_user "\n6. Aguardando estabilização\n"
+send "sleep 8\r"
+expect "# "
+
+send_user "\n7. TESTE FINAL - MOMENTO DA VERDADE!\n"
+send "curl -s 'http://localhost:5001/api/health' && echo ' 🎉 SERVIDOR FINALMENTE FUNCIONANDO!' || echo ' ❌ Precisa mais investigação'\r"
+expect "# "
+
+send_user "\n8. Se funcionou, teste através do nginx:\n"
+send "curl -s 'http://localhost/api/health' && echo ' 🌟 TUDO FUNCIONANDO!' || echo ' ⚠️ Problema no nginx'\r"
+expect "# "
+
+interact

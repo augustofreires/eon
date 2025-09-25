@@ -1,0 +1,45 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send "cd /root/eon/server/routes\r"
+expect "# "
+
+send_user "🔧 CORRIGINDO profile.js\n\n"
+
+send_user "1. Comentando ensureProfilePictureColumn\n"
+send "sed -i '/async function ensureProfilePictureColumn/,/^}/ s/^/\\/\\/ /' profile.js\r"
+expect "# "
+
+send_user "2. Comentando chamada da função\n"
+send "sed -i '/await ensureProfilePictureColumn/s/^/\\/\\/ /' profile.js\r"
+expect "# "
+
+send_user "3. Verificando correção\n"
+send "grep -A3 -B1 'ensureProfilePicture' profile.js | head -10\r"
+expect "# "
+
+send_user "4. Testando servidor\n"
+send "cd /root/eon\r"
+expect "# "
+
+send "pm2 start server/index.js --name eon-fixed\r"
+expect "# "
+
+send "sleep 10\r"
+expect "# "
+
+send_user "5. MOMENTO DA VERDADE!\n"
+send "curl -s 'http://localhost:5001/api/health' && echo ' 🎉 FUNCIONOU!' || echo ' ❌ Ainda não'\r"
+expect "# "
+
+interact

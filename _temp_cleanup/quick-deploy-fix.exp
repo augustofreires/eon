@@ -1,0 +1,59 @@
+#!/usr/bin/expect -f
+
+# Deploy rápido para correção crítica
+set timeout 60
+set server_ip "45.56.124.136"
+set username "augustofreires"
+set password "230106Af!"
+
+log_user 1
+
+puts "🚀 DEPLOY RÁPIDO: Correção crítica do bug de troca de contas"
+
+# Upload direto do arquivo
+spawn scp "/Users/augustofreires/Desktop/Bots deriv/server/routes/auth.js" $username@$server_ip:/root/eonbackend/server/routes/auth.js
+expect {
+    "password:" {
+        send "$password\r"
+    }
+    "100%" {
+        puts "✅ Arquivo enviado com sucesso"
+    }
+    timeout {
+        puts "❌ Timeout no upload"
+        exit 1
+    }
+}
+expect eof
+
+# Conectar e reiniciar
+spawn ssh $username@$server_ip
+expect {
+    "password:" {
+        send "$password\r"
+    }
+    "$ " {
+        puts "✅ Conectado ao servidor"
+    }
+    timeout {
+        puts "❌ Timeout na conexão SSH"
+        exit 1
+    }
+}
+
+# Reiniciar backend
+send "cd /root/eonbackend && pm2 restart eon-backend\r"
+expect "$ "
+puts "✅ Backend reiniciado"
+
+# Verificar status
+send "pm2 status | grep eon-backend\r"
+expect "$ "
+
+send "exit\r"
+expect eof
+
+puts ""
+puts "🎯 DEPLOY CONCLUÍDO!"
+puts "📝 Correção aplicada: Validação de conta solicitada vs retornada"
+puts "🔍 Próximo: Testar troca de contas no sistema"

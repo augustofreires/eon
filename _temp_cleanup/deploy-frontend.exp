@@ -1,0 +1,48 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+
+# Upload the built frontend
+spawn rsync -av -e "ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no" "/Users/augustofreires/Desktop/Bots deriv/client/build/" root@31.97.28.231:/root/eon/client/build/
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect eof
+
+# Now connect and restart services
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "#"
+send "cd /root/eon\r"
+
+expect "#"
+send "echo '=== STOPPING OLD IAEON SERVER ==='\r"
+
+expect "#"
+send "pm2 delete iaeon-server\r"
+
+expect "#"
+send "echo '=== RELOADING NGINX ==='\r"
+
+expect "#"
+send "systemctl reload nginx\r"
+
+expect "#"
+send "echo '=== CHECKING PM2 STATUS ==='\r"
+
+expect "#"
+send "pm2 list\r"
+
+expect "#"
+send "echo '=== TESTING SITE ==='\r"
+
+expect "#"
+send "curl -I https://iaeon.site/\r"
+
+expect "#"
+send "exit\r"
+expect eof

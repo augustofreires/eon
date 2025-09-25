@@ -1,0 +1,51 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🧹 INVESTIGAÇÃO PARA LIMPEZA COMPLETA\n\n"
+
+send "cd /root\r"
+expect "# "
+
+send_user "1. 📂 Diretórios principais no root:\n"
+send "ls -la | grep -E '^d'\r"
+expect "# "
+
+send_user "\n2. 🗂️ Verificando projetos duplicados:\n"
+send "find /root -maxdepth 2 -name '*.js' -o -name 'package.json' | grep -E 'server|client|eon|bots' | head -20\r"
+expect "# "
+
+send_user "\n3. 🔍 Verificando arquivos auth.js duplicados:\n"
+send "find /root -name 'auth.js' -type f\r"
+expect "# "
+
+send_user "\n4. 📋 Tamanhos dos diretórios principais:\n"
+send "du -sh /root/eon /root/bots-deriv 2>/dev/null || echo 'Some dirs not found'\r"
+expect "# "
+
+send_user "\n5. 🔍 Verificando processos Node rodando:\n"
+send "ps aux | grep node | grep -v grep\r"
+expect "# "
+
+send_user "\n6. 📊 PM2 status:\n"
+send "pm2 list\r"
+expect "# "
+
+send_user "\n7. 🗄️ Verificando nginx configs:\n"
+send "ls -la /etc/nginx/sites-*/ | head -10\r"
+expect "# "
+
+send_user "\n8. 🏠 Verificando /var/www:\n"
+send "ls -la /var/www/\r"
+expect "# "
+
+interact

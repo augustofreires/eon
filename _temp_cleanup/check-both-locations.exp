@@ -1,0 +1,52 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o PasswordAuthentication=yes -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "# "
+
+puts "\n=== CHECKING PROJECT IN /root/eon/ ==="
+
+send "ls -la /root/eon/\r"
+expect "# "
+
+send "ls -la /root/eon/client/src/services/\r"
+expect "# "
+
+# Check timestamps of critical files in /root/eon/
+send "ls -la /root/eon/client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+send "ls -la /root/eon/client/src/hooks/useDerivOperations.ts\r"
+expect "# "
+
+send "ls -la /root/eon/client/src/contexts/AuthContext.tsx\r"
+expect "# "
+
+puts "\n=== CHECKING DEPLOYMENT IN /var/www/html/ ==="
+
+send "ls -la /var/www/html/\r"
+expect "# "
+
+puts "\n=== CHECKING FOR BUILT FILES IN /var/www/html/ ==="
+
+send "find /var/www/html -name '*.js' -o -name '*.html' | head -10\r"
+expect "# "
+
+puts "\n=== CHECKING IF PROJECT NEEDS TO BE COPIED ==="
+
+# Check if there are any React build files
+send "ls -la /var/www/html/static/ 2>/dev/null || echo 'No static directory found'\r"
+expect "# "
+
+send "ls -la /var/www/html/index.html 2>/dev/null || echo 'No index.html found'\r"
+expect "# "
+
+puts "\n=== ANALYSIS COMPLETE ==="
+
+send "exit\r"
+expect eof

@@ -62,7 +62,7 @@ const ensureProfilePictureColumn = async () => {
 };
 
 // Executar migração na inicialização
-ensureProfilePictureColumn();
+// ensureProfilePictureColumn();
 
 // GET /api/profile - Buscar dados do perfil do usuário
 router.get('/', authenticateToken, async (req, res) => {

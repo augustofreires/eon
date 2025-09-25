@@ -1,0 +1,38 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "#"
+send "cd /root/eon\r"
+
+expect "#"
+send "echo '=== CHECKING PM2 STATUS ==='\r"
+
+expect "#"
+send "pm2 list\r"
+
+expect "#"
+send "echo '=== STARTING SERVER ==='\r"
+
+expect "#"
+send "pm2 start ecosystem.config.js\r"
+
+expect "#"
+send "echo '=== CHECKING STATUS AFTER START ==='\r"
+
+expect "#"
+send "pm2 list\r"
+
+expect "#"
+send "echo '=== RECENT LOGS ==='\r"
+
+expect "#"
+send "pm2 logs --lines 20\r"
+
+expect "#"
+send "exit\r"
+expect eof

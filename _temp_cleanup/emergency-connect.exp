@@ -1,0 +1,22 @@
+#!/usr/bin/expect -f
+set timeout 30
+spawn ssh root@31.97.28.231
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+send "systemctl status nginx\r"
+expect "# "
+send "pm2 status\r"
+expect "# "
+send "netstat -tlnp | grep :80\r"
+expect "# "
+send "netstat -tlnp | grep :443\r"
+expect "# "
+send "free -h\r"
+expect "# "
+send "df -h\r"
+expect "# "
+send "ufw status\r"
+expect "# "
+send "exit\r"
+expect eof

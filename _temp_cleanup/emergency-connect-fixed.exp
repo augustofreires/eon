@@ -1,0 +1,28 @@
+#!/usr/bin/expect -f
+set timeout 30
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+expect {
+    "Enter passphrase" { send "\r"; exp_continue }
+    "password:" { send "62uDLW4RJ9ae28EPVfp5yzT##\r" }
+    "Permission denied" { exit 1 }
+    timeout { exit 1 }
+}
+expect "# "
+send "echo 'Connected successfully'\r"
+expect "# "
+send "systemctl status nginx | head -10\r"
+expect "# "
+send "pm2 status\r"
+expect "# "
+send "netstat -tlnp | grep -E ':(80|443) '\r"
+expect "# "
+send "free -h\r"
+expect "# "
+send "df -h\r"
+expect "# "
+send "ufw status\r"
+expect "# "
+send "ps aux | grep nginx\r"
+expect "# "
+send "exit\r"
+expect eof

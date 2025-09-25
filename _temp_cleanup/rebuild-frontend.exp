@@ -1,0 +1,93 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "root@" {
+        # Connected successfully
+        send "cd /root/eon\r"
+        expect "root@"
+
+        send "pwd\r"
+        expect "root@"
+
+        send "ls -la\r"
+        expect "root@"
+
+        # Check if we have package.json and what build scripts are available
+        send "cat package.json | grep -A 10 scripts\r"
+        expect "root@"
+
+        # Stop any running services first
+        send "pm2 stop all\r"
+        expect "root@"
+
+        # Install dependencies if needed
+        send "npm install\r"
+        expect "root@"
+
+        # Build the frontend - try different common build commands
+        send "npm run build\r"
+        expect {
+            "root@" {
+                send "echo 'Build completed'\r"
+                expect "root@"
+            }
+            timeout {
+                send "echo 'Build timeout or error'\r"
+                expect "root@"
+            }
+        }
+
+        # If npm run build failed, try other common commands
+        send "npm run build:prod 2>/dev/null || npm run build:production 2>/dev/null || echo 'Standard build commands not found'\r"
+        expect "root@"
+
+        # Check if there's a client directory that needs separate building
+        send "ls -la client/ 2>/dev/null || echo 'No client directory'\r"
+        expect "root@"
+
+        # If there's a client directory, build it separately
+        send "if [ -d client ]; then cd client && npm install && npm run build && cd ..; fi\r"
+        expect "root@"
+
+        # Clear any nginx cache and restart services
+        send "nginx -s reload 2>/dev/null || systemctl reload nginx 2>/dev/null || echo 'Nginx reload attempted'\r"
+        expect "root@"
+
+        # Restart PM2 services
+        send "pm2 start all\r"
+        expect "root@"
+
+        # Show PM2 status
+        send "pm2 status\r"
+        expect "root@"
+
+        # Show what's in the build/dist directory
+        send "ls -la build/ 2>/dev/null || ls -la dist/ 2>/dev/null || ls -la client/build/ 2>/dev/null || ls -la client/dist/ 2>/dev/null || echo 'No standard build directories found'\r"
+        expect "root@"
+
+        send "exit\r"
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+    eof {
+        puts "Connection closed unexpectedly"
+        exit 1
+    }
+}
+
+expect eof

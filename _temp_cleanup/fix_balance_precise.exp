@@ -1,0 +1,146 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "# "
+    }
+    "# " {
+        # Already connected
+    }
+}
+
+# Navigate to project
+send "cd /root/eon\r"
+expect "# "
+
+# Step 1: Restore from backup again
+send "cp client/src/services/DerivWebSocketService.bak client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Step 2: Find the exact position to insert the function
+# Look for the setAutoReconnect method and insert BEFORE the closing brace of the class
+send "grep -n 'setAutoReconnect' client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Step 3: Create a more precise insertion script
+send "cat > /tmp/fix_balance.py << 'PYTHON_EOF'
+#!/usr/bin/env python3
+import re
+
+# Read the current file
+with open('client/src/services/DerivWebSocketService.ts', 'r') as f:
+    content = f.read()
+
+# Find the position after setAutoReconnect method and before the final class closing brace
+# Look for the pattern: setAutoReconnect method followed by closing brace
+pattern = r'(public setAutoReconnect\(enabled: boolean\): void \{[^}]+\})\s*(\})\s*(export default)'
+
+# The function to insert
+balance_function = '''
+  /**
+   * PADRÃO OFICIAL DERIV: Subscribe to balance updates after authorization
+   */
+  private subscribeToBalanceUpdates(): void {
+    console.log('💰 Subscribing to balance updates (official Deriv pattern)...');
+
+    const request = {
+      balance: 1,
+      subscribe: 1,
+      req_id: this.generateRequestId('balance_sub')
+    };
+
+    this.subscribers.set('balance_updates', {
+      onConnection: (data: any) => {
+        if (data.balance) {
+          console.log('💰 DERIV PATTERN: Balance update received:', data.balance);
+          this.notifySubscribers('onBalance', {
+            balance: data.balance.balance,
+            currency: data.balance.currency,
+            loginid: data.balance.loginid || this.currentAccount
+          });
+        }
+      }
+    });
+
+    this.send(request);
+    console.log('✅ Balance subscription request sent');
+  }
+'''
+
+# Replace the pattern to insert the function before the class closing brace
+new_content = re.sub(pattern, r'\1' + balance_function + r'\n\2\n\3', content, flags=re.DOTALL)
+
+# Also add the function call after authorization
+auth_pattern = r'(this\.notifySubscribers\([\'"]onAuthorize[\'"], data\);)'
+new_content = re.sub(auth_pattern, r'\1\n        this.subscribeToBalanceUpdates();', new_content)
+
+# Write the modified content back
+with open('client/src/services/DerivWebSocketService.ts', 'w') as f:
+    f.write(new_content)
+
+print("Function inserted successfully inside the class")
+PYTHON_EOF\r"
+expect "# "
+
+# Step 4: Execute the Python script
+send "python3 /tmp/fix_balance.py\r"
+expect "# "
+
+# Step 5: Verify the changes
+send "echo 'Verifying the function placement...'\r"
+expect "# "
+
+send "grep -n -A 10 -B 5 'subscribeToBalanceUpdates' client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Step 6: Check that the function is inside the class (should be before the final export)
+send "tail -20 client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Step 7: Build the project
+send "echo 'Building project...'\r"
+expect "# "
+
+send "cd client && npm run build\r"
+expect {
+    "build successful" {
+        send "echo 'BUILD SUCCESS!'\r"
+        expect "# "
+    }
+    "Compiled successfully" {
+        send "echo 'BUILD SUCCESS!'\r"
+        expect "# "
+    }
+    "Failed to compile" {
+        send "echo 'BUILD FAILED - Checking syntax...'\r"
+        expect "# "
+    }
+    "# " {
+        send "echo 'Build completed'\r"
+        expect "# "
+    }
+    timeout {
+        send "\\003"
+        expect "# "
+        send "echo 'Build timed out'\r"
+        expect "# "
+    }
+}
+
+# Step 8: Reload nginx if build was successful
+send "cd /root/eon && systemctl reload nginx\r"
+expect "# "
+
+send "echo 'CRITICAL FIX DEPLOYMENT COMPLETED'\r"
+expect "# "
+
+send "exit\r"
+expect eof

@@ -1,0 +1,42 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "Connected"
+    }
+}
+
+send "cd /root/eon\r"
+expect "# "
+
+puts "Checking which database is being used..."
+send "grep -r \"DATABASE_URL\" .env* | head -3\r"
+expect "# "
+
+puts "Checking current account in database..."
+send "sudo -u postgres psql eon_platform -c \"SELECT deriv_account_id, deriv_currency, deriv_is_virtual FROM users WHERE id = 4;\" 2>/dev/null || echo 'Database query failed'\r"
+expect "# "
+
+puts "Testing if server responds on port 5000..."
+send "curl -s -I http://localhost:5000 | head -1\r"
+expect "# "
+
+puts "Checking PM2 logs for switch operations..."
+send "pm2 logs iaeon-server --lines 10 --no-stream | grep -E \"switch|Saldo\" | tail -5\r"
+expect "# "
+
+send "exit\r"
+expect eof

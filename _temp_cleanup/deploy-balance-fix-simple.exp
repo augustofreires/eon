@@ -1,0 +1,94 @@
+#!/usr/bin/expect -f
+
+# URGENT: Balance Subscription Fix Deployment
+set timeout 30
+
+# VPS connection details
+set vps_ip "31.97.28.231"
+set vps_user "root"
+set vps_pass "62uDLW4RJ9ae28EPVfp5yzT##"
+
+puts "🚀 URGENT: Deploying balance subscription fix..."
+
+# Connect to VPS
+spawn ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -o PreferredAuthentications=password $vps_user@$vps_ip
+
+expect {
+    "password:" {
+        send "$vps_pass\r"
+    }
+    timeout {
+        puts "❌ Connection timeout"
+        exit 1
+    }
+}
+
+expect "#"
+puts "✅ Connected to VPS"
+
+# Navigate to project
+send "cd /root/eon\r"
+expect "#"
+
+# Backup current file
+send "cp client/src/services/DerivWebSocketService.ts client/src/services/DerivWebSocketService.ts.backup\r"
+expect "#"
+puts "✅ Backup created"
+
+# CRITICAL FIX: Add subscribeToBalanceUpdates() call after authorization
+puts "🔧 CRITICAL FIX: Adding subscribeToBalanceUpdates() call..."
+
+send "sed -i '/this.currentAccount = data.authorize.loginid;/a\\
+\\
+            // PADRÃO OFICIAL DERIV: Subscribe to balance updates after authorization\\
+            this.subscribeToBalanceUpdates();\\
+' client/src/services/DerivWebSocketService.ts\r"
+expect "#"
+
+# Verify the fix was applied
+send "grep -A 5 'this.currentAccount = data.authorize.loginid' client/src/services/DerivWebSocketService.ts\r"
+expect "#"
+
+# Build the frontend
+puts "🏗️ Building frontend..."
+send "cd client && npm run build\r"
+
+expect {
+    "webpack compiled" {
+        puts "✅ Build successful"
+    }
+    "npm ERR!" {
+        puts "❌ Build error, retrying..."
+        send "npm run build\r"
+        expect "#"
+    }
+    timeout {
+        puts "⏳ Build timeout"
+    }
+}
+
+expect "#"
+
+# Copy build files
+send "cp -r build/* /var/www/eonpro/\r"
+expect "#"
+puts "✅ Files copied"
+
+# Restart services
+send "pm2 restart eon-server\r"
+expect "#"
+
+send "systemctl reload nginx\r"
+expect "#"
+
+send "pm2 status\r"
+expect "#"
+
+puts "✅ CRITICAL FIX DEPLOYED: subscribeToBalanceUpdates() call added"
+
+send "exit\r"
+expect eof
+
+puts "🎯 Expected logs now:"
+puts "💰 Subscribing to balance updates (official Deriv pattern)..."
+puts "✅ Balance subscription request sent"

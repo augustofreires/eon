@@ -1,0 +1,70 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "root@"
+    }
+}
+
+send "cd /root/eon\r"
+expect "root@"
+
+# Check what iaeon-server process is actually running
+send "ps aux | grep iaeon-server | grep -v grep\r"
+expect "root@"
+
+# Check PM2 process details
+send "pm2 describe iaeon-server\r"
+expect "root@"
+
+# Check server logs
+send "pm2 logs iaeon-server --lines 30 --nostream\r"
+expect "root@"
+
+# Check what ports are actually being used
+send "netstat -tlpn | grep LISTEN\r"
+expect "root@"
+
+# Check if there's an eon-backend process
+send "pm2 status | grep -E '(eon|backend)'\r"
+expect "root@"
+
+# Look for the actual backend process
+send "ps aux | grep node | grep -v grep\r"
+expect "root@"
+
+# Check if the backend is configured correctly
+send "cat server/package.json | grep -A 5 -B 5 scripts\r"
+expect "root@"
+
+# Check PM2 ecosystem file
+send "ls -la ecosystem.config.js\r"
+expect "root@"
+
+send "cat ecosystem.config.js\r"
+expect "root@"
+
+# Restart with correct configuration
+send "pm2 stop all\r"
+expect "root@"
+
+send "pm2 start ecosystem.config.js\r"
+expect "root@"
+
+send "sleep 5\r"
+expect "root@"
+
+send "pm2 status\r"
+expect "root@"
+
+send "curl -s http://localhost:3001/api/test\r"
+expect "root@"
+
+send "echo 'Backend fix complete. Testing...'\r"
+expect "root@"
+
+interact

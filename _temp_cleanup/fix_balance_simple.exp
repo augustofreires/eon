@@ -1,0 +1,123 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "# "
+    }
+    "# " {
+        # Already connected
+    }
+}
+
+# Navigate to project
+send "cd /root/eon\r"
+expect "# "
+
+# Restore from backup
+send "cp client/src/services/DerivWebSocketService.bak client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Find the line number where setAutoReconnect method ends
+send "grep -n 'saveConnectionState();' client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Create the function content in a separate file
+send "cat > /tmp/balance_method.txt << 'EOF'
+
+  /**
+   * PADRÃO OFICIAL DERIV: Subscribe to balance updates after authorization
+   */
+  private subscribeToBalanceUpdates(): void {
+    console.log('💰 Subscribing to balance updates (official Deriv pattern)...');
+
+    const request = {
+      balance: 1,
+      subscribe: 1,
+      req_id: this.generateRequestId('balance_sub')
+    };
+
+    this.subscribers.set('balance_updates', {
+      onConnection: (data: any) => {
+        if (data.balance) {
+          console.log('💰 DERIV PATTERN: Balance update received:', data.balance);
+          this.notifySubscribers('onBalance', {
+            balance: data.balance.balance,
+            currency: data.balance.currency,
+            loginid: data.balance.loginid || this.currentAccount
+          });
+        }
+      }
+    });
+
+    this.send(request);
+    console.log('✅ Balance subscription request sent');
+  }
+EOF\r"
+expect "# "
+
+# Insert the function after line 718 (after setAutoReconnect method)
+send "head -n 718 client/src/services/DerivWebSocketService.ts > /tmp/temp_file.ts\r"
+expect "# "
+
+send "cat /tmp/balance_method.txt >> /tmp/temp_file.ts\r"
+expect "# "
+
+send "tail -n +719 client/src/services/DerivWebSocketService.ts >> /tmp/temp_file.ts\r"
+expect "# "
+
+send "mv /tmp/temp_file.ts client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Add the function call after authorization
+send "sed -i '/this.notifySubscribers.*onAuthorize.*data/a\\        this.subscribeToBalanceUpdates();' client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Verify the changes
+send "echo 'Checking function placement...'\r"
+expect "# "
+
+send "grep -n -A 3 -B 3 'subscribeToBalanceUpdates' client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Check that export is still at the end
+send "tail -5 client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+# Build the project
+send "echo 'Building project...'\r"
+expect "# "
+
+send "cd client && npm run build\r"
+expect {
+    "Compiled successfully" {
+        send "echo 'BUILD SUCCESSFUL!'\r"
+        expect "# "
+    }
+    "Failed to compile" {
+        send "echo 'BUILD FAILED'\r"
+        expect "# "
+    }
+    "# " { }
+    timeout {
+        send "\\003"
+        expect "# "
+    }
+}
+
+# Reload nginx
+send "cd /root/eon && systemctl reload nginx\r"
+expect "# "
+
+send "echo 'DEPLOYMENT COMPLETED'\r"
+expect "# "
+
+send "exit\r"
+expect eof

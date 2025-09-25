@@ -1,0 +1,66 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+puts "🚀 Setting up directories and deploying minimal version..."
+
+# First, create the directory and check server structure
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        send "ls -la\r"
+        expect "# "
+
+        send "mkdir -p /var/www/html\r"
+        expect "# "
+
+        send "ls -la /var/www/html\r"
+        expect "# "
+
+        send "exit\r"
+    }
+    timeout {
+        puts "❌ SSH timeout"
+        exit 1
+    }
+}
+
+# Now deploy the files
+spawn scp -r client/build/* root@31.97.28.231:/var/www/html/
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    eof {
+        puts "✅ Frontend deployed successfully"
+    }
+    timeout {
+        puts "❌ Deploy timeout"
+        exit 1
+    }
+}
+
+puts "🚀 Minimal version deployed - testing at site"

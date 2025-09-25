@@ -1,0 +1,54 @@
+#!/usr/bin/expect -f
+
+set timeout 300
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+# Conectar ao VPS para encontrar o projeto
+spawn ssh root@31.97.28.231
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "✅ Conectado ao VPS"
+    }
+}
+
+# Encontrar o projeto
+puts "🔍 Procurando o projeto..."
+send "find / -name \"iaeon-server\" -type d 2>/dev/null | head -5\r"
+expect "# "
+
+send "find / -name \"server.js\" 2>/dev/null | grep -i deriv | head -5\r"
+expect "# "
+
+send "find / -name \"ecosystem.config.js\" 2>/dev/null | head -5\r"
+expect "# "
+
+send "ls -la /var/www/\r"
+expect "# "
+
+send "ls -la /home/\r"
+expect "# "
+
+send "ls -la /opt/\r"
+expect "# "
+
+send "ls -la /root/\r"
+expect "# "
+
+puts "🔍 Verificando PM2..."
+send "pm2 show iaeon-server\r"
+expect "# "
+
+puts "Aguardando análise manual..."
+send "echo 'Digite o caminho do projeto que encontrou:'\r"
+expect "# "
+
+interact

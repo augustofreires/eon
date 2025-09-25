@@ -1,0 +1,92 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        puts "🔍 Testing if JS file exists..."
+        send "file /var/www/html/static/js/main.28d2975c.js\r"
+        expect "# "
+
+        puts "🔧 Adding specific location for static files..."
+        send "cp /etc/nginx/sites-available/iaeon.site /etc/nginx/sites-available/iaeon.site.backup\r"
+        expect "# "
+
+        # Create a new nginx config with static location
+        send "cat > /etc/nginx/sites-available/iaeon.site << 'EOF'\r"
+        send "server {\r"
+        send "    server_name iaeon.site www.iaeon.site;\r"
+        send "\r"
+        send "    add_header X-Frame-Options DENY;\r"
+        send "    add_header X-Content-Type-Options nosniff;\r"
+        send "    add_header X-XSS-Protection \"1; mode=block\";\r"
+        send "    add_header Referrer-Policy strict-origin-when-cross-origin;\r"
+        send "\r"
+        send "    location /static/ {\r"
+        send "        root /var/www/html;\r"
+        send "        expires 1y;\r"
+        send "        add_header Cache-Control \"public, immutable\";\r"
+        send "    }\r"
+        send "\r"
+        send "    location / {\r"
+        send "        root /var/www/html;\r"
+        send "        index index.html index.htm;\r"
+        send "        try_files \$uri \$uri/ /index.html;\r"
+        send "    }\r"
+        send "\r"
+        send "    location /api/ {\r"
+        send "        proxy_pass http://127.0.0.1:3001;\r"
+        send "        proxy_http_version 1.1;\r"
+        send "        proxy_set_header Upgrade \$http_upgrade;\r"
+        send "        proxy_set_header Connection 'upgrade';\r"
+        send "        proxy_set_header Host \$host;\r"
+        send "        proxy_set_header X-Real-IP \$remote_addr;\r"
+        send "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;\r"
+        send "        proxy_set_header X-Forwarded-Proto \$scheme;\r"
+        send "        proxy_cache_bypass \$http_upgrade;\r"
+        send "    }\r"
+        send "\r"
+        send "    listen 443 ssl http2;\r"
+        send "    ssl_certificate /etc/letsencrypt/live/iaeon.site/fullchain.pem;\r"
+        send "    ssl_certificate_key /etc/letsencrypt/live/iaeon.site/privkey.pem;\r"
+        send "    include /etc/letsencrypt/options-ssl-nginx.conf;\r"
+        send "    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;\r"
+        send "}\r"
+        send "\r"
+        send "server {\r"
+        send "    listen 80;\r"
+        send "    server_name iaeon.site www.iaeon.site;\r"
+        send "    return 301 https://\$host\$request_uri;\r"
+        send "}\r"
+        send "EOF\r"
+        expect "# "
+
+        send "nginx -t\r"
+        expect "# "
+
+        send "systemctl reload nginx\r"
+        expect "# "
+
+        puts "🔧 Testing static file now..."
+        send "curl -I https://iaeon.site/static/js/main.28d2975c.js\r"
+        expect "# "
+
+        send "exit\r"
+    }
+}
+
+puts "✅ Static file fix completed"

@@ -1,0 +1,24 @@
+#!/usr/bin/expect -f
+
+set timeout 10
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Check what users exist
+send "sudo -u postgres psql -d eon_platform -c \"SELECT id, username, email FROM users;\" -q\r"
+expect "# "
+
+# Test login endpoint with curl
+send "curl -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"admin123\"}' 2>/dev/null\r"
+expect "# "
+
+# Check server logs for any login attempts
+send "pm2 logs eon-pro-server --lines 5 --raw\r"
+expect "# "
+
+send "exit\r"
+expect eof

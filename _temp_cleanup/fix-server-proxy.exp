@@ -1,0 +1,62 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🔧 CORRIGINDO CONFIGURAÇÃO DO SERVIDOR...\n\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+send_user "1. 🎯 PROBLEMA IDENTIFICADO:\n"
+send_user "   ❌ Servidor roda na porta 5000, não 3000\n"
+send_user "   ❌ Express não confia no nginx proxy\n"
+
+send_user "\n2. 🔧 Corrigindo trust proxy no server/index.js:\n"
+send "grep -n 'trust proxy' server/index.js || echo 'Trust proxy not found'\r"
+expect "# "
+
+send_user "\n3. 🔧 Adicionando trust proxy configuration:\n"
+send "sed -i '/const app = express()/a app.set(\"trust proxy\", true);' server/index.js\r"
+expect "# "
+
+send_user "\n4. 📋 Verificando se foi adicionado:\n"
+send "grep -A2 -B2 'trust proxy' server/index.js\r"
+expect "# "
+
+send_user "\n5. 🔄 Reiniciando servidor:\n"
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+send_user "\n6. ⏰ Aguardando inicialização:\n"
+send "sleep 8\r"
+expect "# "
+
+send_user "\n7. 🧪 Testando porta correta (5000):\n"
+send "curl -s 'http://localhost:5000/api/health' && echo ' ✅ SERVER WORKING!' || echo ' ❌ SERVER STILL BROKEN'\r"
+expect "# "
+
+send_user "\n8. 🧪 Testando nginx proxy (porta 3000):\n"
+send "curl -s 'http://localhost:3000/api/health' && echo ' ✅ NGINX PROXY WORKING!' || echo ' ❌ NGINX PROXY BROKEN'\r"
+expect "# "
+
+send_user "\n9. 📡 Iniciando monitoramento para teste de troca:\n"
+send "pm2 logs eon-pro-server --lines 0 | grep --line-buffered -E 'get-token|switch-account|CRITICAL|POST' &\r"
+expect "# "
+
+send_user "\n🎯 AGORA TESTE A TROCA DE CONTA - O SERVIDOR ESTÁ FUNCIONANDO!\n"
+send "sleep 20\r"
+expect "# "
+
+send "pkill tail\r"
+expect "# "
+
+interact

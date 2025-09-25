@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Update nginx to use IPv6 localhost
+send "sed -i 's|proxy_pass http://localhost:3001|proxy_pass http://[::1]:3001|g' /etc/nginx/sites-available/iaeon.site\r"
+expect "# "
+
+# Verify the change
+send "grep 'proxy_pass' /etc/nginx/sites-available/iaeon.site\r"
+expect "# "
+
+# Test nginx config and reload
+send "nginx -t && systemctl reload nginx\r"
+expect "# "
+
+# Test the fix
+send "curl -s https://iaeon.site/api/health -k\r"
+expect "# "
+
+# Test login
+send "curl -s https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@iaeon.com\",\"password\":\"123456\"}' -k\r"
+expect "# "
+
+send "exit\r"
+expect eof

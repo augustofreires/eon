@@ -1,0 +1,110 @@
+#!/usr/bin/expect -f
+
+set timeout 300
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+# Upload backend
+puts "📦 Uploading backend with better logging..."
+spawn scp server/routes/auth.js root@31.97.28.231:/root/eon/server/routes/
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof {
+        puts "✅ Backend uploaded"
+    }
+}
+
+# Upload frontend
+spawn ssh root@31.97.28.231 "mkdir -p /tmp/timing-fix-build"
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof {}
+}
+
+puts "📦 Uploading frontend with better timing..."
+spawn scp -r /Users/augustofreires/Desktop/Bots\ deriv/client/build/ root@31.97.28.231:/tmp/timing-fix-build/
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof {
+        puts "✅ Frontend uploaded"
+    }
+}
+
+# Apply changes
+spawn ssh root@31.97.28.231
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "✅ Connected to apply timing fixes"
+    }
+}
+
+send "cd /root/eon\r"
+expect "# "
+
+send "rm -rf client/build\r"
+expect "# "
+
+send "mv /tmp/timing-fix-build/build client/\r"
+expect "# "
+
+send "chown -R www-data:www-data client/build\r"
+expect "# "
+
+send "chmod -R 755 client/build\r"
+expect "# "
+
+puts "🔄 Restarting server with timing fixes..."
+send "pm2 restart iaeon-server\r"
+expect "# "
+
+send "pm2 status\r"
+expect "# "
+
+puts "\n✅ Correções de timing aplicadas!"
+puts "🌐 Teste agora: https://iaeon.site"
+puts ""
+puts "🧪 Melhorias aplicadas:"
+puts "   ✓ Logs detalhados no backend para debug"
+puts "   ✓ Delays maiores no frontend (1s, 2s, 3s, 4s, 5s)"
+puts "   ✓ Verificação se a conta realmente mudou"
+puts "   ✓ Mais tentativas de reload (5 tentativas)"
+puts ""
+puts "🔍 Agora você verá nos logs do console:"
+puts "   - Exatamente quando o banco é atualizado"
+puts "   - Se a conta mudou corretamente"
+puts "   - Quantas tentativas foram necessárias"
+
+send "exit\r"
+expect eof

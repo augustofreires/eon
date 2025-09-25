@@ -1,0 +1,38 @@
+#!/usr/bin/expect -f
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Find all nginx config files
+send "find /etc/nginx -name '*iaeon*' -type f\r"
+expect "# "
+
+# Check if there are any other sites enabled
+send "ls -la /etc/nginx/sites-enabled/\r"
+expect "# "
+
+# Check the enabled config
+send "cat /etc/nginx/sites-enabled/iaeon.site | grep -n proxy_pass\r"
+expect "# "
+
+# Force update the enabled config too
+send "sed -i 's/:5000/:3001/g' /etc/nginx/sites-enabled/iaeon.site\r"
+expect "# "
+
+# Check for any default configs
+send "grep -r '5000' /etc/nginx/ | grep -v '.backup'\r"
+expect "# "
+
+# Hard restart nginx to clear any cache
+send "systemctl stop nginx && sleep 2 && systemctl start nginx\r"
+expect "# "
+
+# Test again
+send "curl -s https://iaeon.site/api/health -k\r"
+expect "# "
+
+send "exit\r"
+expect eof

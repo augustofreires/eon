@@ -1,0 +1,45 @@
+#!/usr/bin/expect -f
+
+# Aplicar correção crítica de troca de contas
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "✅ Conectado - Aplicando correção crítica\n"
+
+# Ir para o diretório do projeto
+send "cd /root/eon\r"
+expect "# "
+
+# Fazer backup do arquivo atual
+send "cp server/routes/auth.js server/routes/auth.js.backup.critical_\$(date +%Y%m%d_%H%M%S)\r"
+expect "# "
+send_user "✅ Backup criado\n"
+
+# Verificar se a correção já existe
+send "grep -n 'Account mismatch' server/routes/auth.js\r"
+expect "# "
+
+send_user "🔧 Preparando para aplicar correção...\n"
+send_user "📁 Arquivo: /root/eon/server/routes/auth.js\n"
+send_user "🚀 PM2: eon-pro-server\n"
+
+# Manter sessão ativa para próximos comandos
+send "pwd\r"
+expect "# "
+
+send "ls -la server/routes/auth.js\r"
+expect "# "
+
+send_user "\n🎯 PRONTO PARA UPLOAD DA CORREÇÃO\n"
+send_user "📤 Execute: scp da correção\n"
+send_user "🔄 Execute: pm2 restart eon-pro-server\n\n"
+
+interact

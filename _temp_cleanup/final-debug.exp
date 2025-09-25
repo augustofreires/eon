@@ -1,0 +1,59 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🚨 DIAGNÓSTICO FINAL DO SERVIDOR...\n\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+send_user "1. 📋 Logs de erro completos:\n"
+send "pm2 logs eon-pro-server --err --lines 20\r"
+expect "# "
+
+send_user "\n2. 🔍 Verificando se há processo rodando:\n"
+send "ps aux | grep node\r"
+expect "# "
+
+send_user "\n3. 🧪 Testando porta 5001:\n"
+send "curl -s 'http://localhost:5001/api/health' && echo 'PORT 5001 WORKING' || echo 'PORT 5001 BROKEN'\r"
+expect "# "
+
+send_user "\n4. 📊 Verificando portas ativas:\n"
+send "netstat -tlnp | grep :500\r"
+expect "# "
+
+send_user "\n5. 🔧 Matando tudo e reiniciando limpo:\n"
+send "pm2 stop all\r"
+expect "# "
+send "pkill -f node\r"
+expect "# "
+send "sleep 3\r"
+expect "# "
+
+send_user "\n6. 🚀 Iniciando servidor diretamente para ver erro:\n"
+send "cd /root/eon/server && timeout 15s node index.js\r"
+expect "# " timeout 20
+
+send_user "\n7. ✅ AGORA COM PM2:\n"
+send "cd /root/eon\r"
+expect "# "
+send "pm2 start server/index.js --name eon-pro-server\r"
+expect "# "
+
+send_user "\n8. 🧪 TESTE FINAL - Porta correta:\n"
+send "sleep 5\r"
+expect "# "
+send "curl -s 'http://localhost:5001/api/health' && echo '✅ FINALMENTE FUNCIONANDO!' || echo '❌ Ainda não funciona'\r"
+expect "# "
+
+interact

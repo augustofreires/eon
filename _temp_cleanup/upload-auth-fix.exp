@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+# First, upload the auth.js file
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no "/Users/augustofreires/Desktop/Bots deriv/server/routes/auth.js" root@31.97.28.231:/root/eon/server/routes/auth.js
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect eof
+
+# Now connect and restart server
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "#"
+send "cd /root/eon\r"
+
+expect "#"
+send "echo '=== UPLOADED NEW AUTH.JS - RESTARTING SERVER ==='\r"
+
+expect "#"
+send "pm2 restart server\r"
+
+expect "#"
+send "echo '=== SERVER RESTARTED ==='\r"
+
+expect "#"
+send "pm2 logs server --lines 10\r"
+
+expect "#"
+send "exit\r"
+expect eof

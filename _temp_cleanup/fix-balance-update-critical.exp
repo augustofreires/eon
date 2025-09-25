@@ -1,0 +1,110 @@
+#!/usr/bin/expect -f
+
+# CRITICAL FIX: WebSocket Account Switching with /get-token
+# This script deploys the fix for balance not updating after account switching
+
+set timeout 120
+
+log_user 1
+
+spawn ssh root@iaeon.site
+
+expect "password:"
+send "Augusto2024!\r"
+
+expect "# "
+send "echo '🔧 CRITICAL FIX: Deploying WebSocket account switching fix...'\r"
+
+expect "# "
+send "cd /var/www/iaeon.site\r"
+
+expect "# "
+send "echo '📤 Building frontend with critical WebSocket fixes...'\r"
+
+expect "# "
+send "cd client && npm run build\r"
+
+expect {
+    "compiled successfully" {
+        send "echo '✅ Frontend build successful'\r"
+        expect "# "
+    }
+    "error" {
+        send "echo '❌ Frontend build failed'\r"
+        expect "# "
+        exit 1
+    }
+    timeout {
+        send "echo '⏰ Frontend build timeout'\r"
+        expect "# "
+        exit 1
+    }
+}
+
+expect "# "
+send "echo '🔄 Restarting backend to apply changes...'\r"
+
+expect "# "
+send "pm2 restart eon-backend\r"
+
+expect "# "
+send "sleep 3\r"
+
+expect "# "
+send "echo '📊 Checking deployment status...'\r"
+
+expect "# "
+send "pm2 status\r"
+
+expect "# "
+send "echo '🧪 Testing /get-token endpoint...'\r"
+
+expect "# "
+send "curl -s -H 'Authorization: Bearer test' https://iaeon.site/api/auth/deriv/get-token | head -100\r"
+
+expect "# "
+send "echo ''\r"
+
+expect "# "
+send "echo '✅ CRITICAL FIX DEPLOYED: WebSocket now calls /get-token for account switching'\r"
+
+expect "# "
+send "echo '📋 WHAT WAS FIXED:'\r"
+
+expect "# "
+send "echo '1. WebSocket switchAccount method now calls /get-token internally'\r"
+
+expect "# "
+send "echo '2. Removed token parameter dependency from frontend code'\r"
+
+expect "# "
+send "echo '3. Proper WebSocket reconnection with new account token'\r"
+
+expect "# "
+send "echo '4. Fixed balance subscription after account switch'\r"
+
+expect "# "
+send "echo ''\r"
+
+expect "# "
+send "echo '🔍 TEST INSTRUCTIONS:'\r"
+
+expect "# "
+send "echo '1. Login to https://iaeon.site'\r"
+
+expect "# "
+send "echo '2. Connect Deriv account (if not connected)'\r"
+
+expect "# "
+send "echo '3. Switch between accounts using dropdown'\r"
+
+expect "# "
+send "echo '4. Balance should update immediately after switch'\r"
+
+expect "# "
+send "echo '5. Check browser console for DERIV OFFICIAL logs'\r"
+
+expect "# "
+send "exit\r"
+
+expect eof

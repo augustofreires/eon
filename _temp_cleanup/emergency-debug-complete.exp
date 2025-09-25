@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+
+set timeout 15
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Check what ports are actually listening
+send "netstat -tlnp | grep :3001\r"
+expect "# "
+
+send "netstat -tlnp | grep node\r"
+expect "# "
+
+# Check PM2 status and logs
+send "pm2 list\r"
+expect "# "
+
+send "pm2 logs eon-pro-server --lines 10\r"
+expect "# "
+
+# Test direct connection to the server
+send "curl -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@iaeon.com\",\"password\":\"123456\"}'\r"
+expect "# "
+
+send "exit\r"
+expect eof

@@ -96,20 +96,14 @@ const DerivConnection: React.FC = () => {
       const handleMessage = async (event: MessageEvent) => {
         if (event.origin !== window.location.origin) return;
         
-        if (event.data.type === 'deriv-oauth-callback') {
+        if (event.data.type === 'deriv_oauth_success') {
           popup.close();
-          
+
           try {
-            // Enviar dados OAuth para o backend
-            await axios.post('/api/auth/deriv/callback', {
-              accounts: event.data.accounts,
-              token1: event.data.token1
-            });
-            
             toast.success(t('deriv.connectionSuccess'));
             checkDerivStatus();
           } catch (error: any) {
-            const message = error.response?.data?.error || t('deriv.connectionError');
+            const message = error.message || t('deriv.connectionError');
             toast.error(message);
           }
         }

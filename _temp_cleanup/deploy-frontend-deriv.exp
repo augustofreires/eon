@@ -1,0 +1,77 @@
+#!/usr/bin/expect -f
+
+set timeout 300
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+# First, upload the build files
+puts "=== UPLOADING FRONTEND BUILD FILES ==="
+spawn scp -r -o StrictHostKeyChecking=no "client/build/" root@31.97.28.231:/root/eon/client/
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof {
+        puts "Frontend build upload complete"
+    }
+    timeout {
+        puts "Upload timeout"
+        exit 1
+    }
+}
+
+puts "=== UPLOADING UPDATED SOURCE FILES ==="
+
+# Upload updated DerivWebSocketService.ts
+spawn scp -o StrictHostKeyChecking=no "client/src/services/DerivWebSocketService.ts" root@31.97.28.231:/root/eon/client/src/services/
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof {
+        puts "DerivWebSocketService.ts uploaded"
+    }
+    timeout {
+        puts "Upload timeout"
+        exit 1
+    }
+}
+
+# Upload updated AuthContext.tsx
+spawn scp -o StrictHostKeyChecking=no "client/src/contexts/AuthContext.tsx" root@31.97.28.231:/root/eon/client/src/contexts/
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof {
+        puts "AuthContext.tsx uploaded"
+    }
+    timeout {
+        puts "Upload timeout"
+        exit 1
+    }
+}
+
+# Upload updated useDerivOperations.ts
+spawn scp -o StrictHostKeyChecking=no "client/src/hooks/useDerivOperations.ts" root@31.97.28.231:/root/eon/client/src/hooks/
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof {
+        puts "useDerivOperations.ts uploaded"
+    }
+    timeout {
+        puts "Upload timeout"
+        exit 1
+    }
+}
+
+puts "=== ALL FILES UPLOADED SUCCESSFULLY ==="

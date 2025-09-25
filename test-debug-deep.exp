@@ -1,0 +1,54 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        puts "🔍 Testing local file access..."
+        send "cat /var/www/html/static/js/main.28d2975c.js | head -5\r"
+        expect "# "
+
+        puts "🔍 Testing nginx location processing..."
+        send "curl -v http://localhost/static/js/main.28d2975c.js 2>&1 | head -20\r"
+        expect "# "
+
+        puts "🔍 Checking nginx main config..."
+        send "grep -n 'location.*static' /etc/nginx/sites-available/iaeon.site\r"
+        expect "# "
+
+        puts "🔍 Adding specific location for static files..."
+        send "cp /etc/nginx/sites-available/iaeon.site /etc/nginx/sites-available/iaeon.site.backup\r"
+        expect "# "
+
+        send "sed -i '/location \\/ {/i\\    location /static/ {\\n        root /var/www/html;\\n        expires 1y;\\n        add_header Cache-Control \"public, immutable\";\\n        try_files \\$uri =404;\\n    }\\n' /etc/nginx/sites-available/iaeon.site\r"
+        expect "# "
+
+        send "nginx -t\r"
+        expect "# "
+
+        send "systemctl reload nginx\r"
+        expect "# "
+
+        puts "🔧 Testing again..."
+        send "curl -I https://iaeon.site/static/js/main.28d2975c.js\r"
+        expect "# "
+
+        send "exit\r"
+    }
+}
+
+puts "✅ Deep debugging completed"

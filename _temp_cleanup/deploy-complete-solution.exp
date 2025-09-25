@@ -1,0 +1,52 @@
+#!/usr/bin/expect -f
+set timeout 300
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+puts "🚀 Deploying complete account switching solution..."
+
+# Upload enhanced WebSocket service
+puts "📦 Uploading enhanced DerivWebSocketService..."
+spawn scp client/src/services/DerivWebSocketService.ts root@31.97.28.231:/root/eon/client/src/services/
+expect {
+  "Enter passphrase for key" { interact }
+  "100%" { puts "✅ WebSocket service uploaded" }
+}
+
+# Upload enhanced useDerivOperations hook
+puts "📦 Uploading enhanced useDerivOperations hook..."
+spawn scp client/src/hooks/useDerivOperations.ts root@31.97.28.231:/root/eon/client/src/hooks/
+expect {
+  "Enter passphrase for key" { interact }
+  "100%" { puts "✅ Hook uploaded" }
+}
+
+# Upload enhanced AuthContext
+puts "📦 Uploading enhanced AuthContext..."
+spawn scp client/src/contexts/AuthContext.tsx root@31.97.28.231:/root/eon/client/src/contexts/
+expect {
+  "Enter passphrase for key" { interact }
+  "100%" { puts "✅ AuthContext uploaded" }
+}
+
+# Connect and restart
+puts "🔌 Connecting to restart services..."
+spawn ssh root@31.97.28.231
+expect {
+  "Enter passphrase for key" { interact -o "\n" }
+  "assword:" { send "$password\r" }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+puts "🔄 Restarting backend..."
+send "pm2 restart eon-backend\r"
+expect "# "
+
+puts "🎯 Complete solution deployed!"
+puts "Test account switching at: https://iaeon.site"
+puts "Expected: Balance should update correctly when switching accounts"
+
+send "exit\r"
+expect eof

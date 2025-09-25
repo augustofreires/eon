@@ -1,0 +1,55 @@
+#!/usr/bin/expect -f
+
+# Debug profundo da tela branca
+set timeout 120
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "🔍 DEBUG PROFUNDO: Tela branca persistente\n"
+
+# Testar se o HTML está sendo servido corretamente
+send_user "1️⃣ Testando HTML principal:\n"
+send "curl -s https://iaeon.site | head -5\r"
+expect "# "
+
+# Testar se os arquivos estáticos existem
+send_user "\n2️⃣ Verificando arquivos estáticos:\n"
+send "ls -la /var/www/html/\r"
+expect "# "
+
+send "ls -la /var/www/html/static/js/main.*\r"
+expect "# "
+
+# Testar acesso direto aos arquivos
+send_user "\n3️⃣ Testando acesso aos arquivos JS:\n"
+send "curl -s https://iaeon.site/static/js/main.dba72426.js | head -3\r"
+expect "# "
+
+# Verificar logs do nginx
+send_user "\n4️⃣ Logs do nginx:\n"
+send "tail -10 /var/log/nginx/access.log\r"
+expect "# "
+
+send "tail -10 /var/log/nginx/error.log\r"
+expect "# "
+
+# Testar com user-agent diferentes
+send_user "\n5️⃣ Teste com user-agent específico:\n"
+send "curl -H 'User-Agent: Mozilla/5.0' -I https://iaeon.site/static/js/main.dba72426.js\r"
+expect "# "
+
+# Verificar configuração SSL
+send_user "\n6️⃣ Testando SSL:\n"
+send "openssl s_client -connect iaeon.site:443 -servername iaeon.site 2>/dev/null | head -5\r"
+expect "# "
+
+send_user "\n🎯 Debug completo executado\n"
+
+interact

@@ -1,0 +1,109 @@
+#!/usr/bin/expect -f
+
+set timeout 300
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "\n✅ Conectado ao VPS"
+    }
+    timeout {
+        puts "❌ Timeout na conexão SSH"
+        exit 1
+    }
+}
+
+# Navegar para o diretório do projeto
+send "cd /var/www/deriv-bots\r"
+expect "# "
+
+# Fazer backup do build atual
+send "cp -r client/build client/build.backup.$(date +%Y%m%d_%H%M%S)\r"
+expect "# "
+
+# Criar diretório temporário
+send "mkdir -p /tmp/new-build\r"
+expect "# "
+
+puts "\n🔄 Fazendo upload do novo build..."
+
+# Sair da sessão SSH para fazer upload
+send "exit\r"
+expect eof
+
+# Upload do build via SCP
+spawn scp -r /Users/augustofreires/Desktop/Bots\ deriv/client/build/ root@31.97.28.231:/tmp/new-build/
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    eof {
+        puts "\n✅ Upload do build concluído"
+    }
+}
+
+# Reconectar para aplicar as mudanças
+spawn ssh root@31.97.28.231
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "\n✅ Reconectado ao VPS"
+    }
+}
+
+# Aplicar o novo build
+send "cd /var/www/deriv-bots\r"
+expect "# "
+
+send "rm -rf client/build\r"
+expect "# "
+
+send "mv /tmp/new-build/build client/\r"
+expect "# "
+
+send "chown -R www-data:www-data client/build\r"
+expect "# "
+
+send "chmod -R 755 client/build\r"
+expect "# "
+
+# Reiniciar serviços
+puts "\n🔄 Reiniciando serviços..."
+
+send "pm2 restart all\r"
+expect "# "
+
+send "systemctl restart nginx\r"
+expect "# "
+
+# Verificar se os serviços estão rodando
+puts "\n🔍 Verificando status dos serviços..."
+
+send "pm2 status\r"
+expect "# "
+
+send "systemctl status nginx --no-pager -l\r"
+expect "# "
+
+# Testar se o site está funcionando
+puts "\n🧪 Testando o site..."
+send "curl -I http://localhost:3000\r"
+expect "# "
+
+puts "\n✅ Deploy das melhorias de WebSocket concluído!"
+puts "🔍 Teste manualmente: https://iaeon.site"
+puts "⚠️  Verifique se a reconexão após refresh e troca de contas está funcionando"
+
+send "exit\r"
+expect eof

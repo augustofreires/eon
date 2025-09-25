@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🚀 CORREÇÃO DEFINITIVA DO SERVIDOR!\n\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+send_user "1. 🔧 Corrigindo trust proxy para modo específico:\n"
+send "sed -i 's/app.set(\"trust proxy\", true);/app.set(\"trust proxy\", 1);/' server/index.js\r"
+expect "# "
+
+send_user "2. 🔧 Adicionando configuração de rate limit para proxy:\n"
+send "sed -i '/max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000,/a\\  standardHeaders: true,\\n  legacyHeaders: false,' server/index.js\r"
+expect "# "
+
+send_user "3. 📋 Verificando correções aplicadas:\n"
+send "grep -A3 -B1 'trust proxy' server/index.js\r"
+expect "# "
+
+send_user "\n4. 🔄 Reiniciando servidor:\n"
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+send_user "\n5. ⏰ Aguardando estabilização:\n"
+send "sleep 10\r"
+expect "# "
+
+send_user "\n6. 🧪 TESTE CRÍTICO - Porta 5001:\n"
+send "curl -s 'http://localhost:5001/api/health' && echo '✅ SERVIDOR FUNCIONANDO!' || echo '❌ Ainda quebrado'\r"
+expect "# "
+
+send_user "\n7. 📡 Monitoramento final - TROQUE DE CONTA AGORA!\n"
+send "pm2 logs eon-pro-server --lines 0 | grep --line-buffered -E 'get-token|switch-account|CRITICAL|POST|Started' &\r"
+expect "# "
+
+send_user "\n🎯 AGORA TESTE A TROCA DE CONTA - SERVIDOR DEVE ESTAR FUNCIONANDO!\n"
+send "sleep 25\r"
+expect "# "
+
+send "pkill tail\r"
+expect "# "
+
+send_user "\n✅ Se o servidor está respondendo, as correções devem funcionar agora!\n"
+
+interact

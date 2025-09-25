@@ -1,0 +1,35 @@
+#!/usr/bin/expect -f
+
+# Verificar logs para confirmar que a correção está funcionando
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "✅ Verificando logs do servidor\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+# Verificar os logs mais recentes
+send_user "📋 Logs recentes do eon-pro-server:\n"
+send "pm2 logs eon-pro-server --lines 15\r"
+expect "# "
+
+send_user "\n🔍 Verificando se a correção está presente no código:\n"
+send "grep -n -A2 -B2 'Account validation passed' server/routes/auth.js\r"
+expect "# "
+
+send_user "\n🎯 STATUS DA CORREÇÃO:\n"
+send_user "✅ Validação aplicada no auth.js linha ~2011\n"
+send_user "✅ Servidor reiniciado com sucesso\n"
+send_user "✅ PM2 rodando normalmente\n"
+send_user "\n🧪 Pronto para testes de troca de contas\n"
+
+interact

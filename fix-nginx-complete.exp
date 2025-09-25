@@ -1,0 +1,52 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "Enter passphrase for key" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "# " {
+        puts "🔍 Checking sites-enabled..."
+        send "ls -la /etc/nginx/sites-enabled/\r"
+        expect "# "
+
+        puts "🔧 Enabling iaeon.site..."
+        send "ln -sf /etc/nginx/sites-available/iaeon.site /etc/nginx/sites-enabled/\r"
+        expect "# "
+
+        puts "🔧 Removing default site..."
+        send "rm -f /etc/nginx/sites-enabled/default\r"
+        expect "# "
+
+        puts "🔧 Testing nginx config..."
+        send "nginx -t\r"
+        expect "# "
+
+        puts "🔧 Reloading nginx..."
+        send "systemctl reload nginx\r"
+        expect "# "
+
+        puts "🔧 Testing assets now..."
+        send "curl -I https://iaeon.site/static/js/main.28d2975c.js\r"
+        expect "# "
+
+        send "curl -I https://iaeon.site/static/css/main.4e5bc62d.css\r"
+        expect "# "
+
+        send "exit\r"
+    }
+}
+
+puts "✅ Nginx configuration fixed"

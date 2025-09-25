@@ -1,0 +1,64 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "🔧 CORREÇÃO FINAL DO PROFILE.JS\n\n"
+
+send "pm2 stop all\r"
+expect "# "
+
+send "exit\r"
+expect eof
+
+# Upload do arquivo corrigido
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no "/Users/augustofreires/Desktop/Bots deriv/server/routes/profile.js" root@31.97.28.231:/root/eon/server/routes/profile.js
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+expect eof
+
+# Reconectar e testar
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "✅ Arquivo corrigido enviado! Testando...\n"
+
+send "pm2 start server/index.js --name eon-final\r"
+expect "# "
+
+send "sleep 10\r"
+expect "# "
+
+send_user "🎉 TESTE DEFINITIVO!\n"
+send "curl -s 'http://localhost:5001/api/health' && echo ' 🎉 SERVIDOR FUNCIONANDO!' || echo ' ❌ Falha final'\r"
+expect "# "
+
+send_user "🌐 Teste nginx:\n"
+send "curl -s 'http://localhost/api/health' && echo ' 🌟 TUDO PERFEITO!' || echo ' ⚠️ Problema nginx'\r"
+expect "# "
+
+interact

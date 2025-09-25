@@ -1,0 +1,46 @@
+#!/usr/bin/expect -f
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Check the complete nginx config
+send "cat /etc/nginx/sites-available/iaeon.site | grep -n proxy_pass\r"
+expect "# "
+
+# Force update all proxy_pass lines to use 3001
+send "sed -i 's/:5000/:3001/g' /etc/nginx/sites-available/iaeon.site\r"
+expect "# "
+
+# Also fix any remaining localhost references
+send "sed -i 's/http:\\/\\/localhost:3001/http:\\/\\/127.0.0.1:3001/g' /etc/nginx/sites-available/iaeon.site\r"
+expect "# "
+
+# Verify the changes
+send "grep proxy_pass /etc/nginx/sites-available/iaeon.site\r"
+expect "# "
+
+# Test and reload nginx
+send "nginx -t && systemctl reload nginx\r"
+expect "# "
+
+# Clear nginx error log to see fresh errors
+send "echo '' > /var/log/nginx/error.log\r"
+expect "# "
+
+# Test the fix
+send "curl -s https://iaeon.site/api/health -k\r"
+expect "# "
+
+# Test login
+send "curl -s https://iaeon.site/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@iaeon.com\",\"password\":\"123456\"}' -k\r"
+expect "# "
+
+# Check if there are any new errors
+send "cat /var/log/nginx/error.log\r"
+expect "# "
+
+send "exit\r"
+expect eof

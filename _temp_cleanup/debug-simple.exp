@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh root@31.97.28.231
+
+expect {
+    "passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "# " {
+        puts "Connected"
+    }
+}
+
+send "cd /root/eon\r"
+expect "# "
+
+puts "Checking if file was updated..."
+send "grep -A 5 \"Buscar saldo atual da nova conta\" server/routes/auth.js\r"
+expect "# "
+
+send "exit\r"
+expect eof

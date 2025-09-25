@@ -1,0 +1,56 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o PasswordAuthentication=yes -o PreferredAuthentications=password root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect "# "
+
+# Check current directory and project structure
+send "echo '=== PROJECT STRUCTURE ==='\r"
+expect "# "
+send "pwd\r"
+expect "# "
+send "ls -la /root/eon/\r"
+expect "# "
+
+# Check database file existence and permissions
+send "echo '=== DATABASE CHECK ==='\r"
+expect "# "
+send "ls -la /root/eon/database.db\r"
+expect "# "
+
+# Test database connection and check if users table exists
+send "echo '=== DATABASE CONNECTION TEST ==='\r"
+expect "# "
+send "sqlite3 /root/eon/database.db 'SELECT count(*) as user_count FROM users;'\r"
+expect "# "
+
+# Check first user record (to verify data exists)
+send "echo '=== FIRST USER CHECK ==='\r"
+expect "# "
+send "sqlite3 /root/eon/database.db 'SELECT id, username, email FROM users LIMIT 1;'\r"
+expect "# "
+
+# Check environment variables
+send "echo '=== ENVIRONMENT VARIABLES ==='\r"
+expect "# "
+send "cat /root/eon/.env | grep -E '(DATABASE|JWT|BCRYPT|PORT)'\r"
+expect "# "
+
+# Check recent server logs for errors
+send "echo '=== RECENT SERVER LOGS ==='\r"
+expect "# "
+send "pm2 logs eon-pro-server --lines 30\r"
+expect "# "
+
+# Check if the server is responding on the correct port
+send "echo '=== PORT CHECK ==='\r"
+expect "# "
+send "netstat -tlnp | grep 3001\r"
+expect "# "
+
+send "exit\r"
+expect eof

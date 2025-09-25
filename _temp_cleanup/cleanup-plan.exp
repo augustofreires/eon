@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+   "password:" {
+       send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+   }
+}
+
+expect "# "
+send_user "🧹 PLANO DE LIMPEZA SISTEMÁTICA\n\n"
+
+send "cd /root\r"
+expect "# "
+
+send_user "ETAPA 1: Parando processos\n"
+send "pm2 stop all\r"
+expect "# "
+
+send_user "\nETAPA 2: Removendo backups desnecessários\n"
+send "rm -rf eon_client_backup_*\r"
+expect "# "
+
+send_user "\nETAPA 3: Removendo projeto antigo\n"
+send "rm -rf bots-deriv\r"
+expect "# "
+
+send_user "\nETAPA 4: Limpando scripts de debug do eon\n"
+send "cd /root/eon\r"
+expect "# "
+
+send "rm -f debug*.js test*.js migrate*.js action-cards*.js pages*.js branding*.js useful-links*.js\r"
+expect "# "
+
+send_user "\nETAPA 5: Limpando node_modules e reinstalando limpo\n"
+send "cd server && rm -rf node_modules package-lock.json\r"
+expect "# "
+
+send "npm install\r"
+expect "# " timeout 120
+
+send_user "\nETAPA 6: Testando servidor básico\n"
+send "cd /root/eon\r"
+expect "# "
+
+send "pm2 start server/index.js --name eon-clean\r"
+expect "# "
+
+send "sleep 10\r"
+expect "# "
+
+send_user "\nETAPA 7: Teste crítico\n"
+send "curl -s 'http://localhost:5001/api/health' && echo ' ✅ SERVIDOR LIMPO FUNCIONANDO!' || echo ' ❌ Ainda quebrado'\r"
+expect "# "
+
+send_user "\n🎯 LIMPEZA CONCLUÍDA! Teste o site agora.\n"
+
+interact

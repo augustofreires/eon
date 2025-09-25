@@ -1,0 +1,41 @@
+#!/usr/bin/expect -f
+
+# Upload direto da correção crítica via SSH
+set timeout 300
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "✅ Conectado - Fazendo upload da correção\n"
+
+# Ir para o diretório
+send "cd /root/eon\r"
+expect "# "
+
+# Aplicar a correção diretamente via sed
+send_user "🔧 Aplicando correção crítica no auth.js\n"
+
+# Verificar linha onde deve ser inserida a validação (próximo ao authorize)
+send "grep -n 'authorize.*loginid' server/routes/auth.js | head -5\r"
+expect "# "
+
+# Procurar onde está o processamento da resposta de autorização
+send "grep -n -A5 -B5 'response.authorize' server/routes/auth.js\r"
+expect "# "
+
+send_user "🎯 Localizando ponto de inserção da validação...\n"
+
+# Procurar onde resolve o promise após autorização
+send "grep -n -A10 -B5 'resolve.*response' server/routes/auth.js\r"
+expect "# "
+
+send_user "📝 Preparado para aplicar validação de conta\n"
+send_user "🔍 Revisar os pontos acima para inserir a validação\n"
+
+interact

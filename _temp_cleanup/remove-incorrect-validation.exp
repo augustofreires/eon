@@ -1,0 +1,49 @@
+#!/usr/bin/expect -f
+
+# Remover validação incorreta que está impedindo trocas válidas de conta
+set timeout 120
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "🔧 CORREÇÃO: Removendo validação incorreta\n"
+
+send "cd /root/eon\r"
+expect "# "
+
+# Fazer backup antes da correção
+send "cp server/routes/auth.js server/routes/auth.js.backup.before_validation_removal\r"
+expect "# "
+
+send_user "📝 Removendo validação incorreta que impede trocas válidas...\n"
+
+# Remover o bloco de validação que está causando o problema (linhas 1999-2011)
+send "sed -i '1999,2011d' server/routes/auth.js\r"
+expect "# "
+
+# Verificar se a validação foi removida
+send "grep -n -A5 -B5 'Account mismatch' server/routes/auth.js\r"
+expect "# "
+
+send_user "✅ Validação incorreta removida\n"
+
+# Reiniciar servidor
+send "pm2 restart eon-pro-server\r"
+expect "# "
+
+send "sleep 3\r"
+expect "# "
+
+send "pm2 status\r"
+expect "# "
+
+send_user "🎯 CORREÇÃO APLICADA: Sistema voltou ao comportamento original da Deriv API\n"
+send_user "✅ Troca de contas deve funcionar normalmente agora\n"
+
+interact

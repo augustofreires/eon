@@ -1,0 +1,42 @@
+#!/usr/bin/expect -f
+
+set timeout -1
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "root@"
+
+        send "echo '=== STARTING REAL-TIME LOG MONITORING ==='\r"
+        expect "root@"
+
+        send "echo 'Please switch accounts in your browser now. Monitoring logs...'\r"
+        expect "root@"
+
+        send "echo '=== NGINX ACCESS LOGS (last 10 lines) ==='\r"
+        expect "root@"
+
+        send "tail -10 /var/log/nginx/access.log\r"
+        expect "root@"
+
+        send "echo '=== MONITORING PM2 LOGS - Switch accounts now! ==='\r"
+        expect "root@"
+
+        # Monitor logs in real-time - this will show any activity
+        send "pm2 logs --timestamp --lines 50\r"
+
+        # Keep the connection open for monitoring
+        interact
+    }
+    "Are you sure you want to continue connecting" {
+        send "yes\r"
+        exp_continue
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+expect eof

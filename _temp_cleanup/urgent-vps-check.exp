@@ -1,0 +1,64 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Connect to VPS
+spawn ssh -o PasswordAuthentication=yes -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+    "Are you sure you want to continue connecting" {
+        send "yes\r"
+        exp_continue
+    }
+}
+
+# Wait for shell prompt
+expect "# "
+
+puts "\n=== CHECKING CRITICAL FILES TIMESTAMPS ==="
+
+# Check if files exist and their modification times
+send "ls -la /var/www/html/eon/client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+send "ls -la /var/www/html/eon/client/src/hooks/useDerivOperations.ts\r"
+expect "# "
+
+send "ls -la /var/www/html/eon/client/src/contexts/AuthContext.tsx\r"
+expect "# "
+
+puts "\n=== CHECKING FOR CRITICAL FIXES IN DEPLOYED FILES ==="
+
+# Check for req_id fix (integer not string)
+send "grep -n 'Date.now().*Math.floor.*random' /var/www/html/eon/client/src/services/DerivWebSocketService.ts || echo 'REQ_ID_FIX_MISSING'\r"
+expect "# "
+
+# Check for cleanupSubscriptions method
+send "grep -n 'cleanupSubscriptions' /var/www/html/eon/client/src/services/DerivWebSocketService.ts || echo 'CLEANUP_SUBSCRIPTIONS_MISSING'\r"
+expect "# "
+
+# Check for refreshAccountData method
+send "grep -n 'refreshAccountData' /var/www/html/eon/client/src/services/DerivWebSocketService.ts || echo 'REFRESH_ACCOUNT_DATA_MISSING'\r"
+expect "# "
+
+# Check for event dispatching in AuthContext
+send "grep -n 'deriv-account-switched' /var/www/html/eon/client/src/contexts/AuthContext.tsx || echo 'EVENT_DISPATCHING_MISSING'\r"
+expect "# "
+
+# Check for switchAccount function in useDerivOperations
+send "grep -n 'switchAccount.*async' /var/www/html/eon/client/src/hooks/useDerivOperations.ts || echo 'SWITCH_ACCOUNT_MISSING'\r"
+expect "# "
+
+puts "\n=== CHECKING BACKEND SERVICE STATUS ==="
+
+# Check if backend is running
+send "pm2 status\r"
+expect "# "
+
+puts "\n=== DEPLOYMENT CHECK COMPLETE ==="
+
+send "exit\r"
+expect eof

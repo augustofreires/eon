@@ -1,0 +1,38 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send_user "🔧 CORREÇÃO FINAL: Reiniciando nginx e limpando cache\n"
+
+# Testar com HTTPS interno
+send "curl -k -I https://localhost/static/js/main.dba72426.js\r"
+expect "# "
+
+# Reiniciar nginx completamente
+send "systemctl restart nginx\r"
+expect "# "
+
+send "sleep 2\r"
+expect "# "
+
+# Verificar status
+send "systemctl status nginx | head -5\r"
+expect "# "
+
+# Testar novamente
+send "curl -k -I https://localhost/static/js/main.dba72426.js\r"
+expect "# "
+
+send_user "✅ Nginx reiniciado\n"
+send_user "🌐 Teste o site agora: https://iaeon.site\n"
+
+interact

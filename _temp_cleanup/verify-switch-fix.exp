@@ -1,0 +1,31 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "🔍 VERIFICANDO SE A CORREÇÃO FOI APLICADA...\n"
+
+# Verificar se a correção está no arquivo
+send "grep -A5 -B5 'Allowing switch to update database' server/routes/auth.js\r"
+expect "# "
+
+send_user "\n🔍 Verificando se ainda tem a validação antiga:\n"
+send "grep -A3 -B3 'Account mismatch: requested.*but got' server/routes/auth.js\r"
+expect "# "
+
+send_user "\n🔄 Data de modificação do arquivo:\n"
+send "ls -la server/routes/auth.js\r"
+expect "# "
+
+interact

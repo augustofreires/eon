@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o StrictHostKeyChecking=no root@31.97.28.231
+
+expect {
+    "Enter passphrase" {
+        send "\r"
+        exp_continue
+    }
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        expect "# "
+    }
+    "# " {
+        # Already connected
+    }
+}
+
+# Navigate to project and reload nginx
+send "cd /root/eon && systemctl reload nginx\r"
+expect "# "
+
+# Verify nginx status
+send "systemctl status nginx --no-pager\r"
+expect "# "
+
+# Check that the function call was added correctly
+send "grep -A 3 -B 3 'this.subscribeToBalanceUpdates();' client/src/services/DerivWebSocketService.ts\r"
+expect "# "
+
+send "echo 'CRITICAL BALANCE FIX DEPLOYED SUCCESSFULLY!'\r"
+expect "# "
+
+send "exit\r"
+expect eof

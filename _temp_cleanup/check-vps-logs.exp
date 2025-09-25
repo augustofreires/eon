@@ -1,0 +1,30 @@
+#!/usr/bin/expect -f
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+puts "🔍 Checking VPS logs for switch-account issues..."
+
+spawn ssh root@31.97.28.231
+expect {
+  "Enter passphrase for key" { interact -o "\n" }
+  "assword:" { send "$password\r" }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+puts "📊 Recent backend logs:"
+send "pm2 logs eon-backend --lines 50 | grep -E '(SWITCH-ACCOUNT|Status Deriv|switch|account)' | tail -20\r"
+expect "# "
+
+puts "🔍 Database check - current user account:"
+send "psql -U postgres -d eon_platform -c \"SELECT id, email, deriv_account_id, deriv_is_virtual, deriv_currency FROM users WHERE email = 'cliente@iaeon.com';\"\r"
+expect "# "
+
+puts "📋 PM2 process status:"
+send "pm2 status\r"
+expect "# "
+
+puts "🎯 Analysis complete. Keeping session open..."
+interact

@@ -1,0 +1,44 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+
+# Connect to VPS
+spawn ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+# Handle password prompt
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+        exp_continue
+    }
+    "#" {
+        # Connected successfully
+    }
+    timeout {
+        puts "Connection timeout"
+        exit 1
+    }
+}
+
+# Check the eon directory structure
+send "ls -la /root/eon/\r"
+expect "#"
+
+# Check PM2 logs for errors
+send "pm2 logs iaeon-server --lines 50\r"
+expect "#"
+
+# Check if there are any log files in the eon directory
+send "find /root/eon/ -name '*.log' -type f\r"
+expect "#"
+
+# Check recent PM2 logs with errors
+send "pm2 logs iaeon-server --err --lines 20\r"
+expect "#"
+
+# Check application directory structure
+send "ls -la /root/eon/server/\r"
+expect "#"
+
+send "exit\r"
+expect eof

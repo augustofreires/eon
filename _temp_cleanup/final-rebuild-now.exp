@@ -1,0 +1,31 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+expect "password:"
+send "abc123@!bD\\.\r"
+
+expect "root@"
+send "cd /root/eon\r"
+
+expect "root@"
+send "echo '🚀 REBUILDING FRONTEND WITH TOKEN FIX NOW...'\r"
+
+expect "root@"
+send "npm run build\r"
+expect "Successfully"
+
+send "echo '🔄 Restarting nginx...'\r"
+
+expect "root@"
+send "systemctl reload nginx\r"
+
+expect "root@"
+send "echo '✅ TOKEN FIX DEPLOYED! Test account switching now!'\r"
+
+expect "root@"
+send "exit\r"
+
+expect eof
+puts "🎉 FINAL REBUILD COMPLETED!"

@@ -1,0 +1,36 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    }
+}
+
+expect "# "
+send "cd /root/eon\r"
+expect "# "
+
+send_user "📡 MONITORAMENTO ATIVO - TROQUE DE CONTA AGORA!\n"
+send_user "🔍 Monitorando nginx + servidor...\n"
+
+# Monitor nginx access log e server logs simultaneamente
+send "tail -f /var/log/nginx/access.log | grep --line-buffered -E 'switch-account|POST.*deriv' &\r"
+expect "# "
+
+send "pm2 logs eon-pro-server --lines 0 | grep --line-buffered -E 'switch-account|CRITICAL|Account mismatch|POST' &\r"
+expect "# "
+
+send_user "\n⚡ MONITORES ATIVOS - TROQUE DE CONTA AGORA!\n"
+
+# Aguardar 45 segundos
+send "sleep 45\r"
+expect "# "
+
+send "pkill tail\r"
+expect "# "
+
+interact

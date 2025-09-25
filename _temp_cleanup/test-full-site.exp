@@ -1,0 +1,50 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+set password "62uDLW4RJ9ae28EPVfp5yzT##"
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect {
+    "password:" {
+        send "$password\r"
+        exp_continue
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+    "root@" {
+        # Restart nginx completely to clear any cache
+        send "systemctl restart nginx\r"
+        expect "root@"
+
+        # Test main page
+        send "curl -s http://localhost/ | head -3\r"
+        expect "root@"
+
+        # Test JavaScript file
+        send "curl -I http://localhost/static/js/main.46095354.js\r"
+        expect "root@"
+
+        # Test CSS file
+        send "curl -I http://localhost/static/css/main.4d8cc726.css\r"
+        expect "root@"
+
+        # Test API endpoint (should proxy to backend)
+        send "curl -I http://localhost/api/auth/status\r"
+        expect "root@"
+
+        # Check if PM2 server is running
+        send "pm2 status\r"
+        expect "root@"
+
+        # Test React routing (should serve index.html for non-file paths)
+        send "curl -I http://localhost/operations\r"
+        expect "root@"
+
+        send "exit\r"
+    }
+}
+
+expect eof
