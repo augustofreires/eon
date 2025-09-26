@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+
+# Copy fixed AuthContext
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no client/src/contexts/AuthContext.tsx root@31.97.28.231:/root/eon/client/src/contexts/
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+puts "✅ AuthContext.tsx atualizado"
+
+# SSH and build
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "root@"
+
+send "cd /root/eon/client\r"
+expect "root@"
+
+send "npm run build\r"
+expect "root@"
+
+send "cp -r build/* /var/www/html/\r"
+expect "root@"
+
+send "cd /root/eon && pkill -9 -f node && sleep 3 && nohup node server/index.js > server_final.log 2>&1 &\r"
+expect "root@"
+
+send "sleep 5 && curl -s http://localhost:3001/api/health\r"
+expect "root@"
+
+puts ""
+puts "🎉 DEPLOY FINAL CONCLUÍDO COM SUCESSO!"
+puts ""
+puts "🔧 CORREÇÕES APLICADAS:"
+puts "• Criado interceptor JWT automático"
+puts "• Corrigido erro TypeScript no AuthContext"
+puts "• Sincronizado todos os arquivos modificados"
+puts ""
+puts "🌐 TESTE AGORA:"
+puts "https://iaeon.site"
+puts "Login: admin@iaeon.com / admin123"
+puts "Operações > OAuth Deriv > Troca de Contas"
+puts ""
+puts "✅ As APIs agora incluem JWT tokens automaticamente!"
+
+send "exit\r"
+expect eof

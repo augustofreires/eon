@@ -1,0 +1,96 @@
+#!/usr/bin/expect -f
+
+set timeout 120
+
+# First, sync the modified files
+puts "🔄 SINCRONIZANDO ARQUIVOS MODIFICADOS..."
+
+# Copy api.ts
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no client/src/services/api.ts root@31.97.28.231:/root/eon/client/src/services/
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+# Copy AuthContext.tsx
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no client/src/contexts/AuthContext.tsx root@31.97.28.231:/root/eon/client/src/contexts/
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+# Copy useDerivOperations.ts
+spawn scp -o PreferredAuthentications=password -o PubkeyAuthentication=no client/src/hooks/useDerivOperations.ts root@31.97.28.231:/root/eon/client/src/hooks/
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+expect eof
+
+puts "✅ ARQUIVOS SINCRONIZADOS"
+
+# Now SSH and build
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "root@"
+
+send "cd /root/eon\r"
+expect "root@"
+
+# Verify files were copied
+send "echo '=== VERIFICANDO ARQUIVO api.ts ==='\\r"
+expect "root@"
+
+send "ls -la client/src/services/api.ts\\r"
+expect "root@"
+
+send "head -5 client/src/services/api.ts\\r"
+expect "root@"
+
+# Build with the updated files
+send "echo '=== FAZENDO BUILD COM ARQUIVOS ATUALIZADOS ==='\\r"
+expect "root@"
+
+send "cd client && npm run build\\r"
+expect "root@"
+
+# Copy to nginx
+send "echo '=== COPIANDO PARA NGINX ==='\\r"
+expect "root@"
+
+send "cp -r build/* /var/www/html/\\r"
+expect "root@"
+
+# Restart server
+send "echo '=== REINICIANDO SERVIDOR ==='\\r"
+expect "root@"
+
+send "cd /root/eon\\r"
+expect "root@"
+
+send "pkill -9 -f node\\r"
+expect "root@"
+
+send "sleep 3\\r"
+expect "root@"
+
+send "nohup node server/index.js > server_final.log 2>&1 &\\r"
+expect "root@"
+
+send "sleep 5\\r"
+expect "root@"
+
+# Test
+send "curl -s http://localhost:3001/api/health\\r"
+expect "root@"
+
+puts ""
+puts "✅ DEPLOY COMPLETO REALIZADO!"
+puts "🔄 Arquivos locais sincronizados com VPS"
+puts "🔨 Build executado com arquivos atualizados"
+puts "🌐 TESTE: https://iaeon.site"
+
+send "exit\\r"
+expect eof

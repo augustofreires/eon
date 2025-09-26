@@ -1823,16 +1823,16 @@ router.get('/deriv-affiliate-link', async (req, res) => {
   }
 });
 
-// Buscar todas as contas disponíveis via API Deriv (para usar após OAuth)
+// Buscar todas as contas disponíveis (do banco de dados após OAuth)
 router.post('/deriv/fetch-all-accounts', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    console.log('🔍 Buscando todas as contas disponíveis para usuário:', userId);
+    console.log('🔍 Buscando contas armazenadas para usuário:', userId);
 
-    // Buscar token atual do usuário
+    // Buscar contas salvas no banco de dados
     const userResult = await query(`
-      SELECT deriv_connected, deriv_access_token, deriv_account_id
+      SELECT deriv_connected, deriv_accounts_tokens
       FROM users
       WHERE id = $1
     `, [userId]);
@@ -1846,50 +1846,38 @@ router.post('/deriv/fetch-all-accounts', authenticateToken, async (req, res) => 
 
     const user = userResult.rows[0];
 
-    if (!user.deriv_connected || !user.deriv_access_token) {
+    if (!user.deriv_connected) {
       return res.status(400).json({
         success: false,
         error: 'Conta Deriv não conectada'
       });
     }
 
-    try {
-      // Usar nova função para buscar múltiplas contas
-      const accountData = await validateTokenAndGetAccounts(user.deriv_access_token);
-
-      console.log('📋 Contas encontradas via API:', accountData.available_accounts);
-
-      // Atualizar banco com todas as contas encontradas
-      const accountsTokensJson = JSON.stringify(accountData.available_accounts || []);
-
-      await query(`
-        UPDATE users
-        SET deriv_accounts_tokens = $1,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2
-      `, [accountsTokensJson, userId]);
-
-      res.json({
-        success: true,
-        message: 'Contas atualizadas com sucesso',
-        accounts_found: accountData.available_accounts?.length || 0,
-        available_accounts: (accountData.available_accounts || []).map(acc => ({
-          loginid: acc.loginid,
-          currency: acc.currency,
-          is_virtual: acc.is_virtual
-        }))
-      });
-
-    } catch (apiError) {
-      console.error('❌ Erro ao buscar contas via API:', apiError);
-      res.status(400).json({
-        success: false,
-        error: 'Erro ao buscar contas: ' + apiError.message
-      });
+    // Parse das contas salvas no banco
+    let accounts = [];
+    if (user.deriv_accounts_tokens) {
+      try {
+        accounts = JSON.parse(user.deriv_accounts_tokens);
+      } catch (parseError) {
+        console.error('❌ Erro ao fazer parse das contas salvas:', parseError);
+        accounts = [];
+      }
     }
 
+    console.log(`✅ ${accounts.length} contas encontradas no banco de dados`);
+
+    res.json({
+      success: true,
+      accounts: accounts.map(acc => ({
+        loginid: acc.loginid,
+        currency: acc.currency,
+        is_virtual: acc.is_virtual,
+        token: acc.token // Incluir token para WebSocket
+      }))
+    });
+
   } catch (error) {
-    console.error('❌ Erro geral ao buscar contas:', error);
+    console.error('❌ Erro ao buscar contas:', error);
     res.status(500).json({
       success: false,
       error: 'Erro interno do servidor'

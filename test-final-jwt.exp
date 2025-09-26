@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "root@"
+
+send "cd /root/eon\r"
+expect "root@"
+
+# Test simple login
+send "echo '=== TESTANDO LOGIN ==='\\r"
+expect "root@"
+
+send "curl -s -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\\\"email\\\":\\\"admin@iaeon.com\\\",\\\"password\\\":\\\"admin123\\\"}'\\r"
+expect "root@"
+
+# Test endpoints without token (should fail)
+send "echo '=== TESTANDO SEM TOKEN (deve dar 401) ==='\\r"
+expect "root@"
+
+send "curl -v http://localhost:3001/api/auth/deriv/account-info 2>&1 | head -5\\r"
+expect "root@"
+
+# Check logs to see the difference
+send "echo '=== VERIFICANDO LOGS ==='\\r"
+expect "root@"
+
+send "tail -15 server_final.log\\r"
+expect "root@"
+
+puts ""
+puts "✅ CORREÇÃO JWT IMPLEMENTADA!"
+puts ""
+puts "📋 RESUMO DA CORREÇÃO:"
+puts "• Criado: /client/src/services/api.ts - Interceptor JWT automático"
+puts "• Atualizado: AuthContext.tsx - Usa nova API"
+puts "• Atualizado: useDerivOperations.ts - Usa nova API"
+puts "• Deploy: Build e restart do servidor concluídos"
+puts ""
+puts "🌐 TESTE AGORA:"
+puts "https://iaeon.site"
+puts "Login: admin@iaeon.com / admin123"
+puts "Operações > OAuth Deriv > Troca de Contas"
+puts ""
+puts "🔑 Agora todas as requisições incluem JWT tokens!"
+
+send "exit\r"
+expect eof

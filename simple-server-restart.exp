@@ -1,6 +1,6 @@
 #!/usr/bin/expect -f
 
-set timeout 120
+set timeout 60
 
 spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
 
@@ -12,30 +12,36 @@ expect "root@"
 send "cd /root/eon\r"
 expect "root@"
 
-send "ls -la client/src/services/api.ts\r"
+# Kill all node processes
+send "pkill -9 -f node\r"
 expect "root@"
 
-send "head -3 client/src/services/api.ts\r"
+send "sleep 3\r"
 expect "root@"
 
-send "cd client && npm run build\r"
+# Kill anything on port 3001
+send "lsof -ti:3001 | xargs kill -9 2>/dev/null || echo 'Port free'\r"
 expect "root@"
 
-send "cp -r build/* /var/www/html/\r"
+send "sleep 2\r"
 expect "root@"
 
-send "cd /root/eon && pkill -9 -f node && sleep 3 && nohup node server/index.js > server_final.log 2>&1 &\r"
+# Start server
+send "nohup node server/index.js > server_final.log 2>&1 &\r"
 expect "root@"
 
 send "sleep 5\r"
 expect "root@"
 
+# Test
 send "curl -s http://localhost:3001/api/health\r"
 expect "root@"
 
 puts ""
-puts "✅ DEPLOY SIMPLES CONCLUÍDO!"
-puts "🌐 Teste: https://iaeon.site"
+puts "✅ SERVIDOR REINICIADO!"
+puts ""
+puts "🌐 TESTE: https://iaeon.site"
+puts "📋 LOGIN: admin@iaeon.com / admin123"
 
 send "exit\r"
 expect eof

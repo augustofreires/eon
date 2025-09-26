@@ -1,0 +1,61 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:" {
+    send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+    expect "# " {
+        send "cd /root/eon/server\r"
+        expect "# " {
+            send "echo '=== The password hashes seem incomplete. Let me check directly ==='\r"
+            expect "# " {
+                send "psql -h localhost -U postgres -d eon_platform -c \"SELECT email, length(password_hash) as hash_length, substring(password_hash, 1, 20) as hash_start FROM users;\"\r"
+                expect "Password:" {
+                    send "Augusto@123\r"
+                    expect "# " {
+                        send "echo '=== Test password manually with bcrypt ==='\r"
+                        expect "# " {
+                            send "node -e \"const bcrypt = require('bcryptjs'); const adminHash = '\\$2b\\$12\\$todA9sl//G18Rv/6Oa2XZ./ERTdgVfM1X/UIo0p2ZOW/JaycMPyI2'; const clienteHash = '\\$2b\\$12\\$aPpq.nBZ/q1v1RuesSMBxuX.fs5RWvfWHBFbfJ2SMps8Sf7gsk36i'; console.log('Testing admin123 with hash:', adminHash); bcrypt.compare('admin123', adminHash).then(result => { console.log('admin123 matches admin hash:', result); return bcrypt.compare('cliente123', clienteHash); }).then(result => { console.log('cliente123 matches cliente hash:', result); }).catch(console.error);\"\r"
+                            expect "# " {
+                                send "sleep 3\r"
+                                expect "# " {
+                                    send "echo '=== Test actual login API calls ==='\r"
+                                    expect "# " {
+                                        send "echo 'Testing admin@iaeon.com with admin123:'\r"
+                                        expect "# " {
+                                            send "curl -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"admin@iaeon.com\",\"password\":\"admin123\"}'\r"
+                                            expect "# " {
+                                                send "echo ''\r"
+                                                expect "# " {
+                                                    send "echo 'Testing cliente@iaeon.com with cliente123:'\r"
+                                                    expect "# " {
+                                                        send "curl -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"cliente@iaeon.com\",\"password\":\"cliente123\"}'\r"
+                                                        expect "# " {
+                                                            send "echo ''\r"
+                                                            expect "# " {
+                                                                send "echo '=== Check server logs for any errors ==='\r"
+                                                                expect "# " {
+                                                                    send "pm2 logs server --lines 5 --nostream\r"
+                                                                    expect "# " {
+                                                                        send "exit\r"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+expect eof

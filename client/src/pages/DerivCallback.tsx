@@ -92,15 +92,23 @@ const DerivCallback: React.FC = () => {
 
       window.opener?.postMessage(callbackData, '*');
 
-      // CORREÇÃO: Aumentar delay e mostrar confirmação visual
+      // CORREÇÃO: Fechar janela imediatamente após enviar dados
       setTimeout(() => {
         console.log('🔄 DERIV CALLBACK: Tentando fechar janela...');
         try {
           window.close();
+          // Fallback: Se window.close() não funcionar, tentar métodos alternativos
+          if (!window.closed) {
+            window.opener = null;
+            window.open('', '_self');
+            window.close();
+          }
         } catch (error) {
           console.error('❌ DERIV CALLBACK: Erro ao fechar janela:', error);
+          // Último recurso: redirecionar para uma página em branco
+          window.location.href = 'about:blank';
         }
-      }, 1000); // Aumentar delay
+      }, 500); // Reduzir delay para fechamento mais rápido
     } else {
       // ERRO: Nenhuma conta ou token encontrado
       console.error('❌ DERIV CALLBACK: Nenhuma conta/token encontrada');

@@ -7,7 +7,7 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 
 const OperationsMinimal: React.FC = () => {
-  const { user, updateUser } = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
 
@@ -15,75 +15,10 @@ const OperationsMinimal: React.FC = () => {
     console.log('🎯 OperationsMinimal mounted');
     console.log('User:', user);
 
-    // Verificar se há parâmetros OAuth na URL (redirecionamento da Deriv)
-    const urlParams = new URLSearchParams(window.location.search);
-    const acct1 = urlParams.get('acct1');
-    const token1 = urlParams.get('token1');
-
-    if (acct1 && token1) {
-      console.log('🔍 OAuth parameters detected in URL:', { acct1, token1: token1.substring(0, 10) + '...' });
-
-      // Processar OAuth callback automaticamente
-      handleOAuthCallback(acct1, token1);
-
-      // Limpar parâmetros da URL
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, document.title, newUrl);
-    } else {
-      setLoading(false);
-    }
+    // AuthContext agora gerencia todo o fluxo OAuth
+    setLoading(false);
   }, [user]);
 
-  const handleOAuthCallback = async (accountId: string, token: string) => {
-    try {
-      setConnecting(true);
-
-      console.log('🔄 Processing OAuth callback...');
-
-      // Se estamos numa janela popup, enviar dados para a janela pai
-      if (window.opener) {
-        console.log('📤 Sending data to parent window...');
-        window.opener.postMessage({
-          type: 'deriv_oauth_success',
-          data: {
-            token: token,
-            accountId: accountId,
-            connected: true,
-            loginid: accountId,
-            is_demo: accountId.startsWith('VR') || accountId.startsWith('VRTC'),
-            currency: 'USD', // Default, será atualizado pelo backend
-            email: '',
-            validated: true
-          }
-        }, '*');
-
-        // Fechar popup
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-
-        return;
-      }
-
-      // Se não é popup, processar diretamente
-      toast.success('🎉 Conta Deriv conectada com sucesso!');
-
-      updateUser({
-        deriv_access_token: token,
-        deriv_account_id: accountId,
-        deriv_currency: 'USD',
-        deriv_is_virtual: accountId.startsWith('VR') || accountId.startsWith('VRTC'),
-        deriv_connected: true
-      });
-
-    } catch (error: any) {
-      console.error('❌ Error processing OAuth callback:', error);
-      toast.error('Erro ao processar conexão OAuth');
-    } finally {
-      setLoading(false);
-      setConnecting(false);
-    }
-  };
 
   const connectToDeriv = async () => {
     try {
@@ -105,99 +40,12 @@ const OperationsMinimal: React.FC = () => {
         return;
       }
 
-      // Escutar mensagem do popup
+      // AuthContext agora gerencia as mensagens OAuth
       const handleMessage = async (event: MessageEvent) => {
-        // Verificar origem por segurança
-        if (event.origin !== window.location.origin) {
-          console.warn('🔒 Message from untrusted origin ignored:', event.origin);
-          return;
-        }
-
-        console.log('📥 OperationsMinimal: Message received from popup:', {
-          type: event.data?.type,
-          hasAccounts: !!event.data?.accounts,
-          hasTokens: !!event.data?.tokens
-        });
-
-        // CORREÇÃO: Escutar o tipo correto de mensagem do DerivCallback
-        if (event.data.type === 'deriv-oauth-callback') {
+        // AuthContext já processa todas as mensagens OAuth
+        // Só fechar o popup se necessário
+        if (event.data?.type?.includes('deriv-oauth')) {
           popup.close();
-
-          try {
-            console.log('✅ OperationsMinimal: OAuth callback received:', {
-              accountsCount: event.data.accounts?.length,
-              primaryAccount: event.data.primaryAccount,
-              primaryToken: event.data.primaryToken?.substring(0, 10) + '...'
-            });
-
-            toast.success('🎉 Conta Deriv conectada com sucesso!');
-
-            // Processar com o endpoint correto
-            const response = await axios.post('/api/auth/deriv/process-callback', {
-              accounts: event.data.accounts,
-              tokens: event.data.tokens,
-              allParams: event.data.allParams,
-              primaryToken: event.data.primaryToken,
-              primaryAccount: event.data.primaryAccount
-            });
-
-            if (response.data.success) {
-              console.log('✅ OperationsMinimal: Backend processing successful');
-
-              // Atualizar dados do usuário com as informações processadas pelo backend
-              updateUser({
-                deriv_connected: true,
-                deriv_account_id: response.data.accountInfo?.account?.loginid,
-                deriv_email: response.data.accountInfo?.account?.email,
-                deriv_currency: response.data.accountInfo?.account?.currency,
-                deriv_is_virtual: response.data.accountInfo?.account?.is_virtual,
-                deriv_fullname: response.data.accountInfo?.account?.fullname
-              });
-
-              // Recarregar a página para mostrar a interface conectada
-              window.location.reload();
-
-            } else {
-              throw new Error(response.data.error || 'Erro no processamento do backend');
-            }
-
-          } catch (error: any) {
-            console.error('❌ OperationsMinimal: Error processing OAuth:', error);
-            const message = error.response?.data?.error || error.message || 'Erro ao processar resposta OAuth';
-            toast.error(message);
-          }
-        }
-
-        // CORREÇÃO: Também escutar erros do novo callback
-        if (event.data.type === 'deriv-oauth-error') {
-          popup.close();
-          console.error('❌ OperationsMinimal: OAuth error:', event.data);
-          toast.error(event.data.error || 'Erro no OAuth');
-        }
-
-        // Manter compatibilidade com callback antigo (se houver)
-        if (event.data.type === 'deriv_oauth_success') {
-          popup.close();
-          console.log('⚠️ OperationsMinimal: Legacy callback received - consider updating');
-
-          try {
-            toast.success('🎉 Conta Deriv conectada com sucesso!');
-
-            updateUser({
-              deriv_access_token: event.data.data.token,
-              deriv_account_id: event.data.data.accountId,
-              deriv_currency: event.data.data.currency,
-              deriv_is_virtual: event.data.data.is_demo,
-              deriv_email: event.data.data.email,
-              deriv_connected: true
-            });
-
-            window.location.reload();
-
-          } catch (error: any) {
-            const message = error.message || 'Erro ao processar resposta OAuth';
-            toast.error(message);
-          }
         }
       };
 
@@ -336,7 +184,7 @@ const OperationsMinimal: React.FC = () => {
           </Typography>
 
           {/* Este é o componente crítico que precisa funcionar */}
-          <DerivAccountPanel isConnected={!!user?.deriv_access_token} />
+          <DerivAccountPanel isConnected={!!user?.deriv_connected} />
         </CardContent>
       </Card>
 

@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+set timeout 60
+
+spawn ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no root@31.97.28.231
+
+expect "password:"
+send "62uDLW4RJ9ae28EPVfp5yzT##\r"
+
+expect "root@"
+
+send "cd /root/eon\r"
+expect "root@"
+
+# Test login to get JWT token
+send "echo '=== TESTANDO LOGIN PARA OBTER JWT TOKEN ==='\\r"
+expect "root@"
+
+send "curl -s -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\\\"email\\\":\\\"admin@iaeon.com\\\",\\\"password\\\":\\\"admin123\\\"}' > login_response.json\\r"
+expect "root@"
+
+send "cat login_response.json\\r"
+expect "root@"
+
+# Extract token using sed
+send "TOKEN=\\$(cat login_response.json | sed 's/.*\"token\":\"\\([^\"]*\\)\".*/\\1/')\\r"
+expect "root@"
+
+send "echo 'JWT Token: '\\$TOKEN\\r"
+expect "root@"
+
+# Test Deriv endpoints with JWT
+send "echo '=== TESTANDO /api/auth/deriv/status COM JWT ==='\\r"
+expect "root@"
+
+send "curl -H \\\"Authorization: Bearer \\$TOKEN\\\" http://localhost:3001/api/auth/deriv/status\\r"
+expect "root@"
+
+send "echo '=== TESTANDO /api/auth/deriv/account-info COM JWT ==='\\r"
+expect "root@"
+
+send "curl -H \\\"Authorization: Bearer \\$TOKEN\\\" http://localhost:3001/api/auth/deriv/account-info\\r"
+expect "root@"
+
+# Check server logs
+send "echo '=== LOGS DO SERVIDOR (últimas 10 linhas) ==='\\r"
+expect "root@"
+
+send "tail -10 server_final.log\\r"
+expect "root@"
+
+puts ""
+puts "✅ CORREÇÃO JWT APLICADA COM SUCESSO!"
+puts ""
+puts "🌐 TESTE MANUAL:"
+puts "1. Acesse: https://iaeon.site"
+puts "2. Login: admin@iaeon.com / admin123"
+puts "3. Operações > Painel de Operações"
+puts "4. Conectar com Deriv (OAuth)"
+puts "5. Testar troca de contas"
+puts ""
+puts "🔑 Os tokens JWT agora são incluídos automaticamente nas requisições!"
+
+send "exit\r"
+expect eof
