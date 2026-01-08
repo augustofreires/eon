@@ -238,9 +238,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             await wsService.authorize(newAccountData.token);
             console.log('✅ WebSocket re-autorizado com sucesso!');
           } else {
-            console.log('🔌 WebSocket desconectado, conectando com novo token...');
-            await wsService.connect(newAccountData.token);
-            console.log('✅ WebSocket conectado com novo token!');
+            console.log('🔌 WebSocket desconectado, conectando...');
+            await wsService.connect();
+            console.log('✅ WebSocket conectado, autorizando...');
+            await wsService.authorize(newAccountData.token);
+            console.log('✅ WebSocket autorizado com sucesso!');
           }
         } catch (wsError) {
           console.error('⚠️ Erro ao re-autorizar WebSocket (não crítico):', wsError);
