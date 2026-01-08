@@ -54,16 +54,27 @@ api.interceptors.response.use(
       message: error.response?.data?.error || error.message
     });
 
-    // Se token expirado ou não autorizado, limpar sessão
+    // CORREÇÃO: Só limpar sessão se for erro de autenticação REAL
+    // Não limpar em erros de rotas protegidas (perfil, bots, etc)
     if (error.response?.status === 401) {
-      console.log('🔄 API: Token expirado, limpando sessão...');
-      localStorage.removeItem('token');
-      toast.error('Sessão expirada. Faça login novamente.');
+      const errorMessage = error.response?.data?.error || '';
+      const isAuthError = errorMessage.includes('Token') ||
+                         errorMessage.includes('inválido') ||
+                         errorMessage.includes('expirado');
 
-      // Forçar refresh para voltar ao login
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 1000);
+      // Só redirecionar para login se for na rota de verificação
+      if (error.config?.url?.includes('/auth/verify') || isAuthError) {
+        console.log('🔄 API: Token expirado/inválido, limpando sessão...');
+        localStorage.removeItem('token');
+        toast.error('Sessão expirada. Faça login novamente.');
+
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1000);
+      } else {
+        // Apenas logar o erro, não limpar a sessão
+        console.warn('⚠️ API: Erro 401 mas mantendo sessão:', error.config?.url);
+      }
     }
 
     return Promise.reject(error);

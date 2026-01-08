@@ -4,6 +4,8 @@
   "description": "Frontend da plataforma de bots Deriv",
   "private": true,
   "dependencies": {
+    "@deriv-com/api-hooks": "^1.7.2",
+    "@deriv-com/quill-ui": "^1.24.6",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@mui/icons-material": "^5.14.19",

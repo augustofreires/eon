@@ -3,7 +3,7 @@ import { Box, Typography, Card, CardContent, Alert, CircularProgress, Button } f
 import { Link as LinkIcon } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import DerivAccountPanel from '../components/DerivAccountPanel';
-import axios from 'axios';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 const OperationsMinimal: React.FC = () => {
@@ -22,47 +22,127 @@ const OperationsMinimal: React.FC = () => {
 
   const connectToDeriv = async () => {
     try {
+      console.log('🚀 OAuth: Starting Deriv connection process...');
       setConnecting(true);
 
-      // Obter URL de autorização
-      const response = await axios.get('/api/auth/deriv/authorize');
-      const { auth_url } = response.data;
+      // Show loading toast for immediate feedback
+      const loadingToastId = toast.loading('🔄 Iniciando conexão com Deriv...');
 
-      // Abrir popup para autorização
-      const popup = window.open(
-        auth_url,
-        'deriv-oauth',
-        'width=600,height=700,scrollbars=yes,resizable=yes'
-      );
+      try {
+        // Obter URL de autorização com debugging detalhado
+        console.log('📡 OAuth: Calling /api/auth/deriv/authorize...');
+        const response = await api.get('/api/auth/deriv/authorize');
 
-      if (!popup) {
-        toast.error('Popup bloqueado! Permita popups para este site.');
-        return;
+        console.log('✅ OAuth: Authorization URL received:', {
+          success: response.data.success,
+          hasAuthUrl: !!response.data.auth_url,
+          expiresIn: response.data.expires_in
+        });
+
+        const { auth_url } = response.data;
+
+        if (!auth_url) {
+          throw new Error('URL de autorização não recebida do servidor');
+        }
+
+        toast.success('✅ URL OAuth obtida! Abrindo popup...', { id: loadingToastId });
+
+        // Abrir popup para autorização com debugging
+        console.log('🪟 OAuth: Opening popup window with URL:', auth_url.substring(0, 100) + '...');
+
+        const popup = window.open(
+          auth_url,
+          'deriv-oauth',
+          'width=600,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no,status=no'
+        );
+
+        if (!popup) {
+          console.error('❌ OAuth: Popup was blocked by browser');
+          toast.error('❌ Popup bloqueado! Permita popups para este site e tente novamente.', { id: loadingToastId });
+          setConnecting(false);
+          return;
+        }
+
+        console.log('✅ OAuth: Popup window opened successfully');
+        toast.success('🪟 Popup aberto! Complete a autorização na nova janela.', { id: loadingToastId });
+
+        // Enhanced message handling with debugging
+        const handleMessage = async (event: MessageEvent) => {
+          console.log('📨 OAuth: Message received from popup:', {
+            origin: event.origin,
+            type: event.data?.type,
+            hasData: !!event.data
+          });
+
+          // Verify origin for security
+          if (event.origin !== window.location.origin) {
+            console.warn('⚠️ OAuth: Ignoring message from untrusted origin:', event.origin);
+            return;
+          }
+
+          // AuthContext já processa todas as mensagens OAuth
+          if (event.data?.type?.includes('deriv-oauth')) {
+            console.log('✅ OAuth: Valid OAuth message received, closing popup...');
+            popup.close();
+            setConnecting(false);
+            toast.dismiss(loadingToastId);
+          }
+        };
+
+        window.addEventListener('message', handleMessage);
+
+        // Enhanced popup monitoring with timeout
+        let checkCount = 0;
+        const maxChecks = 300; // 5 minutes maximum (300 * 1000ms)
+
+        const checkClosed = setInterval(() => {
+          checkCount++;
+
+          if (popup.closed) {
+            console.log(`✅ OAuth: Popup closed after ${checkCount} checks`);
+            window.removeEventListener('message', handleMessage);
+            clearInterval(checkClosed);
+            setConnecting(false);
+            toast.dismiss(loadingToastId);
+
+            // If popup was closed without completing OAuth, show info message
+            if (checkCount < 10) {
+              toast('ℹ️ Popup fechado. Se não completou a autorização, tente novamente.');
+            }
+          } else if (checkCount >= maxChecks) {
+            console.warn('⏰ OAuth: Popup check timeout reached, stopping monitoring');
+            window.removeEventListener('message', handleMessage);
+            clearInterval(checkClosed);
+            setConnecting(false);
+            toast.error('⏰ Tempo limite de autorização excedido. Tente novamente.', { id: loadingToastId });
+
+            try {
+              popup.close();
+            } catch (e) {
+              console.warn('⚠️ OAuth: Could not close popup:', e);
+            }
+          }
+        }, 1000);
+
+        // Additional popup focus handling
+        try {
+          popup.focus();
+          console.log('✅ OAuth: Popup focused successfully');
+        } catch (e) {
+          console.warn('⚠️ OAuth: Could not focus popup:', e);
+        }
+
+      } catch (networkError: any) {
+        console.error('❌ OAuth: Network error during authorization request:', networkError);
+        const message = networkError?.response?.data?.error || networkError?.message || 'Erro de rede ao solicitar autorização';
+        toast.error(`❌ Erro de rede: ${message}`, { id: loadingToastId });
+        setConnecting(false);
       }
 
-      // AuthContext agora gerencia as mensagens OAuth
-      const handleMessage = async (event: MessageEvent) => {
-        // AuthContext já processa todas as mensagens OAuth
-        // Só fechar o popup se necessário
-        if (event.data?.type?.includes('deriv-oauth')) {
-          popup.close();
-        }
-      };
-
-      window.addEventListener('message', handleMessage);
-
-      // Limpar listener quando popup fechar
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          window.removeEventListener('message', handleMessage);
-          clearInterval(checkClosed);
-          setConnecting(false);
-        }
-      }, 1000);
-
     } catch (error: any) {
-      const message = error.response?.data?.error || 'Erro ao iniciar conexão';
-      toast.error(message);
+      console.error('❌ OAuth: General error in connectToDeriv:', error);
+      const message = error.response?.data?.error || error.message || 'Erro ao iniciar conexão';
+      toast.error(`❌ Erro: ${message}`);
       setConnecting(false);
     }
   };
@@ -114,15 +194,23 @@ const OperationsMinimal: React.FC = () => {
               disabled={connecting}
               sx={{
                 py: 2,
-                background: 'linear-gradient(135deg, #ff4500 0%, #ff6347 100%)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #ff6347 0%, #ff4500 100%)',
+                background: connecting
+                  ? 'linear-gradient(135deg, #666 0%, #888 100%)'
+                  : 'linear-gradient(135deg, #ff4500 0%, #ff6347 100%)',
+                '&:hover': connecting
+                  ? {}
+                  : { background: 'linear-gradient(135deg, #ff6347 0%, #ff4500 100%)' },
+                '&:disabled': {
+                  color: '#ffffff',
+                  opacity: 0.8
                 },
                 fontSize: '1.1rem',
                 fontWeight: 600,
+                cursor: connecting ? 'wait' : 'pointer',
+                transition: 'all 0.3s ease'
               }}
             >
-              {connecting ? 'Conectando...' : 'Conectar com Deriv'}
+              {connecting ? 'Carregando...' : 'CONECTAR COM DERIV'}
             </Button>
           </CardContent>
         </Card>

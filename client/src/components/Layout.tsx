@@ -15,7 +15,7 @@ import {
   MenuItem,
   Divider,
 } from '@mui/material';
-import axios from 'axios';
+import api from '../services/api';
 import {
   Menu as MenuIcon,
   Dashboard,
@@ -81,7 +81,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const loadBranding = async () => {
     try {
-      const response = await axios.get('/api/branding/config');
+      const response = await api.get('/api/branding/config');
       setBranding(response.data);
       if (response.data.online_users_count) {
         setOnlineUsers(response.data.online_users_count);
@@ -93,7 +93,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const loadUserProfile = async () => {
     try {
-      const response = await axios.get('/api/profile');
+      const response = await api.get('/api/profile');
       setUserProfilePicture(response.data.profile_picture || null);
     } catch (error) {
       console.error('Erro ao carregar perfil do usuário:', error);

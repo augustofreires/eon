@@ -28,6 +28,8 @@ import ClientDashboard from './pages/client/Dashboard';
 import ClientBotsPage from './pages/client/BotsPage';
 import CoursesPage from './pages/CoursesPage';
 import OperationsMinimal from './pages/OperationsMinimal';
+import DerivWidgetTest from './components/DerivWidgetTest';
+import TradingPanel from './components/TradingPanel';
 import BankManagementPage from './pages/BankManagementPage';
 import CurrencyConverterPage from './pages/CurrencyConverterPage';
 import UsefulLinksPage from './pages/UsefulLinksPage';
@@ -241,11 +243,27 @@ function AppContent() {
         <Route path="/operations" element={
           <ProtectedRoute>
             <Layout>
+              <TradingPanel />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/widgets-test" element={
+          <ProtectedRoute>
+            <Layout>
+              <DerivWidgetTest />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/operations-minimal" element={
+          <ProtectedRoute>
+            <Layout>
               <OperationsMinimal />
             </Layout>
           </ProtectedRoute>
         } />
-        
+
         <Route path="/bank-management" element={
           <ProtectedRoute>
             <Layout>
@@ -303,6 +321,9 @@ function AppContent() {
         {/* Rota pública para callback OAuth */}
         <Route path="/auth/deriv/callback" element={<DerivCallback />} />
         <Route path="/operations/auth/deriv/callback" element={<DerivCallback />} />
+
+        {/* Rota especial para OAuth callback - não protegida - CORRIGIDO */}
+        <Route path="/operations/oauth" element={<DerivCallback />} />
       </Routes>
       <Toaster position="top-right" />
     </Box>

@@ -148,20 +148,42 @@ const DerivAccountPanel: React.FC<DerivAccountPanelProps> = ({ isConnected, onRe
   };
 
   useEffect(() => {
-    if (isConnected) {
+    if (isConnected && user) {
+      console.log('🔄 DerivAccountPanel: Usuário conectado, carregando dados...');
+
+      // 1. Carregar informações da conta atual (saldo, etc.)
       loadAccountInfo();
-      // Só carregar contas se ainda não foram carregadas
+
+      // 2. ✅ CORREÇÃO: Buscar TODAS as contas da nova tabela deriv_accounts
       if (availableAccounts.length === 0) {
-        console.log('🔄 DerivAccountPanel: Buscando contas (não há contas carregadas)');
-        fetchAccounts('account-panel');
+        console.log('📥 DerivAccountPanel: Buscando todas as contas do backend...');
+
+        axios.get('/api/auth/deriv/all-accounts')
+          .then(response => {
+            if (response.data.success && response.data.accounts.length > 0) {
+              const accounts = response.data.accounts;
+              console.log(`✅ ${accounts.length} contas carregadas do backend:`, accounts);
+
+              // Atualizar availableAccounts via AuthContext (se disponível)
+              // Mas também manter lista local para display
+              fetchAccounts('account-panel-initial-load');
+
+              toast.success(`${accounts.length} contas Deriv disponíveis`);
+            } else {
+              console.log('⚠️ Nenhuma conta encontrada no backend');
+            }
+          })
+          .catch(error => {
+            console.error('❌ Erro ao buscar contas do backend:', error);
+            // Fallback: tentar fetchAccounts do AuthContext
+            console.log('🔄 Fallback: usando fetchAccounts do AuthContext...');
+            fetchAccounts('account-panel-fallback');
+          });
       } else {
-        console.log('✅ DerivAccountPanel: Contas já carregadas:', {
-          total: availableAccounts.length,
-          current: currentAccount?.loginid || 'N/A'
-        });
+        console.log(`ℹ️ ${availableAccounts.length} contas já carregadas no contexto`);
       }
     }
-  }, [isConnected]);
+  }, [isConnected, user?.id]); // Executar quando conectar ou trocar usuário
 
   const handleRefresh = () => {
     loadAccountInfo();

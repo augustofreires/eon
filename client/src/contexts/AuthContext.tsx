@@ -101,7 +101,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, []);
 
-  // Função simplificada para buscar contas seguindo padrão oficial Deriv
+  // ✅ CORREÇÃO: Buscar contas da nova tabela deriv_accounts
   const fetchAccounts = useCallback(async (source = 'unknown') => {
     // Prevenir múltiplas execuções simultâneas
     if (fetchAccountsRunning.current) {
@@ -111,42 +111,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     try {
       fetchAccountsRunning.current = true;
-      console.log(`🔄 AuthContext: Buscando contas (fonte: ${source})...`);
+      console.log(`🔄 AuthContext: Buscando contas da tabela deriv_accounts (fonte: ${source})...`);
 
-      // Buscar contas via API backend que usa o padrão oficial Deriv
-      const response = await api.post('/api/auth/deriv/fetch-all-accounts');
+      // ✅ CORREÇÃO: Usar nova rota que busca da tabela deriv_accounts
+      const response = await api.get('/api/auth/deriv/all-accounts');
       const accounts = response.data.accounts || [];
 
       if (accounts.length > 0) {
-        console.log(`✅ AuthContext: ${accounts.length} contas carregadas via API`);
+        console.log(`✅ AuthContext: ${accounts.length} contas carregadas da tabela deriv_accounts`);
+        console.log('📊 Contas:', accounts.map((acc: any) => `${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'})`));
+
         setAvailableAccounts(accounts);
 
         // Set current account se não tiver uma definida
         if (!currentAccount && accounts.length > 0) {
-          console.log('🎯 AuthContext: Definindo primeira conta como atual:', accounts[0].loginid);
-          setCurrentAccount(accounts[0]);
+          // Preferir conta ativa (is_active = true) se existir
+          const activeAccount = accounts.find((acc: any) => acc.is_active) || accounts[0];
+          console.log('🎯 AuthContext: Definindo conta atual:', activeAccount.loginid);
+          setCurrentAccount(activeAccount);
         }
 
         // Update user connection status when accounts are found
         if (user && !user.deriv_connected) {
-          console.log('🔄 AuthContext: Updating user connection status to true');
+          console.log('🔄 AuthContext: Atualizando status de conexão do usuário para true');
           updateUser({ deriv_connected: true });
         }
       } else {
-        console.log('⚠️ AuthContext: Nenhuma conta retornada pela API');
+        console.log('⚠️ AuthContext: Nenhuma conta encontrada na tabela deriv_accounts');
         setAvailableAccounts([]);
         setCurrentAccount(null);
       }
     } catch (error: any) {
       console.error('❌ AuthContext fetchAccounts: Erro:', error);
 
-      // Se não conseguiu buscar via API, tentar verificar status
+      // Se não conseguiu buscar contas, limpar estado
+      setAvailableAccounts([]);
+      setCurrentAccount(null);
+
+      // Verificar se usuário ainda está conectado
       try {
         const statusResponse = await api.get('/api/auth/deriv/status');
         if (!statusResponse.data.connected) {
           console.log('⚠️ AuthContext: Usuário não conectado à Deriv');
-          setAvailableAccounts([]);
-          setCurrentAccount(null);
+          if (user && user.deriv_connected) {
+            updateUser({ deriv_connected: false });
+          }
         }
       } catch (statusError) {
         console.error('❌ AuthContext: Erro ao verificar status:', statusError);
@@ -154,7 +163,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } finally {
       fetchAccountsRunning.current = false;
     }
-  }, [currentAccount, user]);
+  }, [currentAccount, user, updateUser]);
 
   // Switch de conta simplificado seguindo padrão oficial Deriv
   const switchAccount = useCallback(async (account: DerivAccount, manual: boolean = false) => {
@@ -185,28 +194,67 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         toast.loading(`Trocando para ${account.loginid}...`, { id: 'switch-account' });
       }
 
+      // ✅ CORREÇÃO: Chamar nova rota que retorna o TOKEN da nova conta
       const response = await api.post('/api/auth/deriv/switch-account', {
-        loginid: account.loginid,
-        is_virtual: account.is_virtual,
-        currency: account.currency
+        loginid: account.loginid
       });
 
       if (response.data.success) {
-        console.log('✅ AuthContext: Switch account successful');
-
-        // Atualizar conta atual e dados do usuário
-        setCurrentAccount(account);
-        updateUser({
-          deriv_account_id: account.loginid,
-          deriv_currency: account.currency,
-          deriv_is_virtual: account.is_virtual
+        const newAccountData = response.data.account;
+        console.log('✅ AuthContext: Backend retornou nova conta com token:', {
+          loginid: newAccountData.loginid,
+          currency: newAccountData.currency,
+          is_virtual: newAccountData.is_virtual,
+          has_token: !!newAccountData.token
         });
 
-        if (manual) {
-          toast.success(`Conta trocada para ${account.loginid}`, { id: 'switch-account' });
+        // ✅ CRÍTICO: Atualizar estado local PRIMEIRO
+        setCurrentAccount({
+          loginid: newAccountData.loginid,
+          currency: newAccountData.currency,
+          is_virtual: newAccountData.is_virtual,
+          token: newAccountData.token
+        });
+
+        updateUser({
+          deriv_account_id: newAccountData.loginid,
+          deriv_access_token: newAccountData.token,
+          deriv_currency: newAccountData.currency,
+          deriv_is_virtual: newAccountData.is_virtual,
+          deriv_email: newAccountData.email,
+          deriv_fullname: newAccountData.fullname
+        });
+
+        // ✅ CRÍTICO: Re-autorizar WebSocket com o NOVO TOKEN
+        try {
+          console.log('🔌 AuthContext: Re-autorizando WebSocket com novo token...');
+
+          const DerivWebSocketService = (await import('../services/DerivWebSocketService')).default;
+          const wsService = DerivWebSocketService.getInstance();
+
+          // Verificar se WebSocket está conectado
+          if (wsService.getConnectionStatus()) {
+            console.log('🔌 WebSocket conectado, re-autorizando...');
+            await wsService.authorize(newAccountData.token);
+            console.log('✅ WebSocket re-autorizado com sucesso!');
+          } else {
+            console.log('🔌 WebSocket desconectado, conectando com novo token...');
+            await wsService.connect(newAccountData.token);
+            console.log('✅ WebSocket conectado com novo token!');
+          }
+        } catch (wsError) {
+          console.error('⚠️ Erro ao re-autorizar WebSocket (não crítico):', wsError);
+          // Não falhar o switch se WebSocket falhar
         }
 
-        console.log('✅ AuthContext: Switch completo para:', account.loginid);
+        if (manual) {
+          toast.success(
+            `Conta trocada para ${newAccountData.loginid} (${newAccountData.is_virtual ? 'Virtual' : 'Real'})`,
+            { id: 'switch-account' }
+          );
+        }
+
+        console.log('✅ AuthContext: Switch completo para:', newAccountData.loginid);
       } else {
         throw new Error(response.data.error || 'Erro no switch');
       }
@@ -248,9 +296,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkAuth();
   }, []);
 
-  // Listener para callback OAuth simplificado
+  // Listener para callback OAuth melhorado com retry e feedback
   useEffect(() => {
     const handleOAuthCallback = async (event: MessageEvent) => {
+      console.log('🔍 AuthContext: OAuth message received:', {
+        origin: event.origin,
+        expectedOrigin: window.location.origin,
+        type: event.data?.type,
+        hasData: !!event.data
+      });
+
       // Verificar origem por segurança
       if (event.origin !== window.location.origin) {
         console.warn('🔒 Callback OAuth de origem não confiável ignorado:', event.origin);
@@ -263,6 +318,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           tokensCount: Object.keys(event.data.tokens || {}).length,
           primaryAccount: event.data.primaryAccount
         });
+
+        // Loading toast para feedback imediato
+        const loadingToastId = toast.loading('🔄 Processando conexão OAuth...');
 
         try {
           // Processar o callback OAuth via backend que segue padrão oficial Deriv
@@ -286,20 +344,56 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             });
 
             // Carregar contas disponíveis após callback
-            fetchAccounts('oauth-callback');
+            await fetchAccounts('oauth-callback');
 
-            toast.success('🎉 Conta Deriv conectada com sucesso!');
+            toast.success('🎉 Conta Deriv conectada com sucesso!', { id: loadingToastId });
+
+            // Aguardar um momento para garantir que o estado seja atualizado
+            setTimeout(() => {
+              console.log('✅ OAUTH CALLBACK: Processamento completo, estado atualizado');
+            }, 1000);
+
           } else {
             console.error('❌ OAUTH CALLBACK: Erro no processamento:', response.data.error);
-            toast.error('Erro ao processar conexão OAuth');
+            toast.error(`Erro ao processar conexão OAuth: ${response.data.error}`, { id: loadingToastId });
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('❌ OAUTH CALLBACK: Erro na chamada da API:', error);
-          toast.error('Erro ao conectar com Deriv');
+          const errorMessage = error.response?.data?.error || error.message || 'Erro ao conectar com Deriv';
+          toast.error(`Erro ao conectar com Deriv: ${errorMessage}`, { id: loadingToastId });
+
+          // Retry automatico em caso de erro de rede
+          if (error.code === 'NETWORK_ERROR' || error.response?.status >= 500) {
+            console.log('🔄 OAUTH CALLBACK: Tentando novamente em 3 segundos...');
+            setTimeout(async () => {
+              try {
+                const retryResponse = await api.post('/api/auth/deriv/process-callback', {
+                  accounts: event.data.accounts,
+                  tokens: event.data.tokens,
+                  allParams: event.data.allParams
+                });
+
+                if (retryResponse.data.success) {
+                  updateUser({
+                    deriv_connected: true,
+                    deriv_account_id: retryResponse.data.accountInfo?.account?.loginid,
+                    deriv_email: retryResponse.data.accountInfo?.account?.email,
+                    deriv_currency: retryResponse.data.accountInfo?.account?.currency,
+                    deriv_is_virtual: retryResponse.data.accountInfo?.account?.is_virtual,
+                    deriv_fullname: retryResponse.data.accountInfo?.account?.fullname
+                  });
+                  await fetchAccounts('oauth-callback-retry');
+                  toast.success('🎉 Conta Deriv conectada após retry!');
+                }
+              } catch (retryError) {
+                console.error('❌ OAUTH CALLBACK RETRY: Falhou também:', retryError);
+              }
+            }, 3000);
+          }
         }
       } else if (event.data && event.data.type === 'deriv-oauth-error') {
         console.error('❌ OAUTH ERROR:', event.data.error);
-        toast.error('Erro na autorização Deriv');
+        toast.error(`Erro na autorização Deriv: ${event.data.error}`);
       }
     };
 

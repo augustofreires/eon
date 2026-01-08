@@ -2856,4 +2856,251 @@ router.get('/deriv/debug-user-data', authenticateToken, async (req, res) => {
   }
 });
 
+// ============================================================================
+// NOVAS ROTAS: Gerenciamento de Múltiplas Contas Deriv (Tabela deriv_accounts)
+// ============================================================================
+
+// Nova rota: Salvar TODAS as contas OAuth na tabela deriv_accounts
+router.post('/deriv/save-all-accounts', authenticateToken, async (req, res) => {
+  try {
+    const { accounts } = req.body; // Array de contas do OAuth callback
+    const userId = req.user.id;
+
+    if (!accounts || !Array.isArray(accounts) || accounts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nenhuma conta fornecida'
+      });
+    }
+
+    console.log(`💾 Salvando ${accounts.length} contas OAuth para usuário ${userId}...`);
+
+    // 1. Desativar todas as contas antigas
+    await query(
+      'UPDATE deriv_accounts SET is_active = FALSE WHERE user_id = $1',
+      [userId]
+    );
+
+    // 2. Salvar cada conta no banco de dados
+    let savedCount = 0;
+    for (const account of accounts) {
+      try {
+        await query(`
+          INSERT INTO deriv_accounts (
+            user_id, loginid, token, currency, is_virtual,
+            email, fullname, is_active
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          ON CONFLICT (user_id, loginid)
+          DO UPDATE SET
+            token = $3,
+            currency = $4,
+            is_virtual = $5,
+            email = $6,
+            fullname = $7,
+            is_active = $8,
+            updated_at = CURRENT_TIMESTAMP
+        `, [
+          userId,
+          account.loginid,
+          account.token,
+          account.currency || 'USD',
+          account.is_virtual || false,
+          account.email || '',
+          account.fullname || '',
+          true // Todas as contas novas ficam ativas
+        ]);
+
+        savedCount++;
+        console.log(`  ✅ Conta ${savedCount}/${accounts.length} salva: ${account.loginid}`);
+
+      } catch (saveError) {
+        console.error(`  ❌ Erro ao salvar conta ${account.loginid}:`, saveError);
+      }
+    }
+
+    // 3. Atualizar usuário principal com a primeira conta
+    const primaryAccount = accounts[0];
+    await query(`
+      UPDATE users
+      SET deriv_connected = TRUE,
+          deriv_account_id = $1,
+          deriv_access_token = $2,
+          deriv_currency = $3,
+          deriv_is_virtual = $4,
+          deriv_email = $5,
+          deriv_fullname = $6,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
+    `, [
+      primaryAccount.loginid,
+      primaryAccount.token,
+      primaryAccount.currency || 'USD',
+      primaryAccount.is_virtual || false,
+      primaryAccount.email || '',
+      primaryAccount.fullname || '',
+      userId
+    ]);
+
+    console.log(`✅ ${savedCount}/${accounts.length} contas salvas com sucesso!`);
+    console.log(`✅ Usuário atualizado com conta principal: ${primaryAccount.loginid}`);
+
+    res.json({
+      success: true,
+      message: `${savedCount} contas conectadas com sucesso`,
+      saved_count: savedCount,
+      total_count: accounts.length,
+      accounts: accounts.map(a => ({
+        loginid: a.loginid,
+        currency: a.currency,
+        is_virtual: a.is_virtual
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao salvar contas OAuth:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao salvar contas Deriv'
+    });
+  }
+});
+
+// Nova rota: Buscar TODAS as contas da tabela deriv_accounts
+router.get('/deriv/all-accounts', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log(`🔍 Buscando todas as contas Deriv do usuário ${userId}...`);
+
+    // Buscar todas as contas do usuário ordenadas por ativa primeiro
+    const result = await query(`
+      SELECT
+        loginid,
+        currency,
+        is_virtual,
+        email,
+        fullname,
+        is_active,
+        created_at
+      FROM deriv_accounts
+      WHERE user_id = $1
+      ORDER BY is_active DESC, created_at ASC
+    `, [userId]);
+
+    const accounts = result.rows;
+
+    console.log(`✅ ${accounts.length} contas encontradas`);
+
+    res.json({
+      success: true,
+      count: accounts.length,
+      accounts: accounts.map(acc => ({
+        loginid: acc.loginid,
+        currency: acc.currency,
+        is_virtual: acc.is_virtual,
+        email: acc.email,
+        fullname: acc.fullname,
+        is_active: acc.is_active
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar contas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar contas Deriv'
+    });
+  }
+});
+
+// Nova rota: Trocar conta ativa (usando tabela deriv_accounts)
+router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
+  try {
+    const { loginid } = req.body;
+    const userId = req.user.id;
+
+    if (!loginid) {
+      return res.status(400).json({
+        success: false,
+        error: 'loginid é obrigatório'
+      });
+    }
+
+    console.log(`🔄 Trocando para conta ${loginid} (usuário ${userId})...`);
+
+    // 1. Buscar a conta solicitada com seu token
+    const accountResult = await query(`
+      SELECT loginid, token, currency, is_virtual, email, fullname
+      FROM deriv_accounts
+      WHERE user_id = $1 AND loginid = $2
+    `, [userId, loginid]);
+
+    if (accountResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Conta não encontrada'
+      });
+    }
+
+    const newAccount = accountResult.rows[0];
+    console.log(`  ✅ Conta encontrada: ${newAccount.loginid} (${newAccount.is_virtual ? 'Virtual' : 'Real'})`);
+
+    // 2. Desativar todas as outras contas
+    await query(
+      'UPDATE deriv_accounts SET is_active = FALSE WHERE user_id = $1',
+      [userId]
+    );
+
+    // 3. Ativar a conta selecionada
+    await query(
+      'UPDATE deriv_accounts SET is_active = TRUE WHERE user_id = $1 AND loginid = $2',
+      [userId, loginid]
+    );
+
+    // 4. Atualizar usuário principal com os dados da nova conta
+    await query(`
+      UPDATE users
+      SET deriv_account_id = $1,
+          deriv_access_token = $2,
+          deriv_currency = $3,
+          deriv_is_virtual = $4,
+          deriv_email = $5,
+          deriv_fullname = $6,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
+    `, [
+      newAccount.loginid,
+      newAccount.token,
+      newAccount.currency,
+      newAccount.is_virtual,
+      newAccount.email,
+      newAccount.fullname,
+      userId
+    ]);
+
+    console.log(`✅ Conta trocada com sucesso para ${loginid}`);
+
+    res.json({
+      success: true,
+      message: `Conta trocada para ${loginid}`,
+      account: {
+        loginid: newAccount.loginid,
+        currency: newAccount.currency,
+        is_virtual: newAccount.is_virtual,
+        token: newAccount.token, // Token necessário para re-autorizar WebSocket
+        email: newAccount.email,
+        fullname: newAccount.fullname
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao trocar conta:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao trocar conta Deriv'
+    });
+  }
+});
+
 module.exports = router; 

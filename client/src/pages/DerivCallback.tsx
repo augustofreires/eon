@@ -7,6 +7,10 @@ const DerivCallback: React.FC = () => {
     console.log('🔍 URL completa:', window.location.href);
     console.log('🔍 Search params:', window.location.search);
     console.log('🔍 Hash fragment:', window.location.hash);
+    console.log('🔍 Opener available:', !!window.opener);
+    console.log('🔍 Opener closed:', window.opener?.closed);
+    console.log('🔍 Is popup:', window.opener && !window.opener.closed);
+    console.log('🔍 Current path:', window.location.pathname);
 
     // CORREÇÃO CRÍTICA: OAuth da Deriv retorna tokens tanto em query params quanto em hash fragment
     // Vamos verificar ambos os locais
@@ -74,61 +78,124 @@ const DerivCallback: React.FC = () => {
     });
 
     if (accounts.length > 0) {
-      // CORREÇÃO: Enviar todos os dados capturados
-      const callbackData = {
-        type: 'deriv-oauth-callback',
-        accounts: accounts,
-        tokens: tokens,
-        allParams: Object.fromEntries(allParams),
-        primaryToken: accounts[0]?.token,
-        primaryAccount: accounts[0]?.loginid
-      };
+      // CORREÇÃO: Detectar se estamos em popup ou página normal
+      const isPopup = window.opener && !window.opener.closed;
+      const isOperationsPage = window.location.pathname === '/operations' || window.location.pathname === '/operations/oauth';
 
-      console.log('✅ DERIV CALLBACK: Enviando dados para janela pai:', {
-        ...callbackData,
-        tokens: Object.keys(tokens),
-        primaryToken: callbackData.primaryToken?.substring(0, 10) + '...'
-      });
+      if (isPopup) {
+        // MODO POPUP: Enviar dados via postMessage
+        const callbackData = {
+          type: 'deriv-oauth-callback',
+          accounts: accounts,
+          tokens: tokens,
+          allParams: Object.fromEntries(allParams),
+          primaryToken: accounts[0]?.token,
+          primaryAccount: accounts[0]?.loginid
+        };
 
-      window.opener?.postMessage(callbackData, '*');
+        console.log('✅ DERIV CALLBACK POPUP: Enviando dados para janela pai:', {
+          ...callbackData,
+          tokens: Object.keys(tokens),
+          primaryToken: callbackData.primaryToken?.substring(0, 10) + '...'
+        });
 
-      // CORREÇÃO: Fechar janela imediatamente após enviar dados
-      setTimeout(() => {
-        console.log('🔄 DERIV CALLBACK: Tentando fechar janela...');
-        try {
-          window.close();
-          // Fallback: Se window.close() não funcionar, tentar métodos alternativos
-          if (!window.closed) {
-            window.opener = null;
-            window.open('', '_self');
+        // Usar origem específica para segurança
+        const targetOrigin = window.location.origin;
+        window.opener.postMessage(callbackData, targetOrigin);
+
+        console.log('✅ DERIV CALLBACK POPUP: Mensagem enviada para origem:', targetOrigin);
+
+        // Fechar popup
+        setTimeout(() => {
+          try {
             window.close();
+          } catch (error) {
+            console.error('❌ Erro ao fechar popup:', error);
           }
-        } catch (error) {
-          console.error('❌ DERIV CALLBACK: Erro ao fechar janela:', error);
-          // Último recurso: redirecionar para uma página em branco
-          window.location.href = 'about:blank';
+        }, 500);
+
+      } else if (isOperationsPage) {
+        // MODO PÁGINA NORMAL: Processar OAuth diretamente na página
+        console.log('✅ DERIV CALLBACK PÁGINA: Processando OAuth na página operations...');
+
+        // ✅ CORREÇÃO: Usar nova rota que salva TODAS as contas na tabela deriv_accounts
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+          console.error('❌ Token de autenticação não encontrado');
+          window.location.href = '/login';
+          return;
         }
-      }, 500); // Reduzir delay para fechamento mais rápido
+
+        fetch('/api/auth/deriv/save-all-accounts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            accounts: accounts  // ✅ Array completo com TODAS as contas OAuth
+          }),
+        })
+        .then(response => response.json())
+        .then(data => {
+          console.log('✅ Todas as contas OAuth salvas no backend:', data);
+
+          if (data.success) {
+            console.log(`✅ ${data.saved_count} contas salvas com sucesso!`);
+
+            // Mostrar notificação de sucesso
+            const accountsText = data.accounts.map((acc: any) =>
+              `${acc.loginid} (${acc.is_virtual ? 'Virtual' : 'Real'})`
+            ).join(', ');
+
+            console.log(`📊 Contas salvas: ${accountsText}`);
+
+            // Redirecionar para operations após 1 segundo
+            setTimeout(() => {
+              window.location.href = '/operations';
+            }, 1000);
+          } else {
+            console.error('❌ Erro no backend:', data.error);
+            alert(`Erro ao salvar contas: ${data.error}`);
+          }
+        })
+        .catch(error => {
+          console.error('❌ Erro ao processar OAuth:', error);
+          alert('Erro ao processar autenticação. Verifique o console.');
+        });
+
+      } else {
+        console.error('❌ DERIV CALLBACK: Contexto não reconhecido (nem popup nem operations)');
+      }
     } else {
       // ERRO: Nenhuma conta ou token encontrado
       console.error('❌ DERIV CALLBACK: Nenhuma conta/token encontrada');
       console.error('❌ URL completa:', window.location.href);
       console.error('❌ Todos os parâmetros:', Object.fromEntries(allParams));
 
-      window.opener?.postMessage({
-        type: 'deriv-oauth-error',
-        error: 'Nenhuma conta ou token OAuth encontrado',
-        debug: {
-          url: window.location.href,
-          search: window.location.search,
-          hash: window.location.hash,
-          allParams: Object.fromEntries(allParams)
-        }
-      }, '*');
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          type: 'deriv-oauth-error',
+          error: 'Nenhuma conta ou token OAuth encontrado',
+          debug: {
+            url: window.location.href,
+            search: window.location.search,
+            hash: window.location.hash,
+            allParams: Object.fromEntries(allParams)
+          }
+        }, window.location.origin);
+      }
 
+      // Fechar janela após erro também
       setTimeout(() => {
-        window.close();
-      }, 5000); // Mais tempo para debug
+        try {
+          window.close();
+        } catch (error) {
+          console.error('❌ DERIV CALLBACK: Erro ao fechar janela após erro:', error);
+          window.location.replace('about:blank');
+        }
+      }, 3000); // Tempo suficiente para debug
     }
   }, []);
 

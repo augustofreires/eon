@@ -41,7 +41,7 @@ import {
   AccountBalanceWallet,
   School
 } from '@mui/icons-material';
-import axios from 'axios';
+import api from '../../services/api';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -120,7 +120,7 @@ const ClientDashboard: React.FC = () => {
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          const response = await axios.get('/api/operations/account-info');
+          const response = await api.get('/api/operations/account-info');
           setAccountInfo(response.data);
         } catch (error: any) {
           if (error.response?.status === 400) {
@@ -139,7 +139,7 @@ const ClientDashboard: React.FC = () => {
 
   const loadAffiliateLink = async () => {
     try {
-      const response = await axios.get('/api/auth/deriv-affiliate-link');
+      const response = await api.get('/api/auth/deriv-affiliate-link');
       setAffiliateLink(response.data.affiliate_link);
     } catch (error) {
       console.error('Erro ao carregar link de afiliado:', error);
@@ -148,7 +148,7 @@ const ClientDashboard: React.FC = () => {
 
   const loadActionCards = async () => {
     try {
-      const response = await axios.get('/api/action-cards');
+      const response = await api.get('/api/action-cards');
       setActionCards(response.data || []);
     } catch (error) {
       console.error('Erro ao carregar cards de ação:', error);
@@ -157,7 +157,7 @@ const ClientDashboard: React.FC = () => {
 
   const loadTopBots = async () => {
     try {
-      const response = await axios.get('/api/bots');
+      const response = await api.get('/api/bots');
       const bots = response.data.bots || [];
       
       // Adicionar dados fictícios para o ranking
@@ -181,7 +181,7 @@ const ClientDashboard: React.FC = () => {
   const handleConnectDeriv = async () => {
     try {
       // Obter URL de autorização do backend
-      const response = await axios.get('/api/auth/deriv/authorize');
+      const response = await api.get('/api/auth/deriv/authorize');
       const { auth_url } = response.data;
       
       // Abrir popup para autorização
@@ -205,7 +205,7 @@ const ClientDashboard: React.FC = () => {
           
           try {
             // Enviar dados OAuth para o backend
-            await axios.post('/api/auth/deriv/callback', {
+            await api.post('/api/auth/deriv/callback', {
               accounts: event.data.accounts,
               token1: event.data.token1
             });

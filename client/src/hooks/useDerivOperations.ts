@@ -123,11 +123,17 @@ const useDerivOperations = (): UseDerivOperationsReturn => {
   }, []);
 
   /**
-   * Conecta ao WebSocket da Deriv
+   * Conecta ao WebSocket da Deriv - CORRIGIDO
    */
   const connect = useCallback(async (): Promise<boolean> => {
-    if (isConnected || isConnecting) {
-      return isConnected;
+    if (isConnected) {
+      console.log('✅ Já conectado ao WebSocket');
+      return true;
+    }
+
+    if (isConnecting) {
+      console.log('⏳ Já está conectando...');
+      return false;
     }
 
     try {
@@ -136,69 +142,124 @@ const useDerivOperations = (): UseDerivOperationsReturn => {
 
       const connected = await derivWS.current.connect();
 
-      if (connected) {
-        setIsConnected(true);
-        addLog('success', 'Conectado ao WebSocket da Deriv com sucesso');
-
-        // Autorizar se tiver token
-        if (user?.deriv_connected && currentAccount) {
-          try {
-            const response = await api.get('/api/auth/deriv/get-token');
-            if (response.data.success && response.data.token) {
-              const authorized = await derivWS.current.authorize(response.data.token);
-              if (authorized) {
-                addLog('success', `Autorizado na conta: ${currentAccount.loginid}`);
-
-                // Subscrever para atualizações de saldo
-                derivWS.current.subscribeBalance('main', (data) => {
-                  setAccountData(data);
-                  setBotStatus(prev => ({
-                    ...prev,
-                    currentBalance: data.balance
-                  }));
-                });
-
-                // Subscrever para transações
-                derivWS.current.subscribeTransactions('main', (data) => {
-                  addLog('trade', `Transação: ${data.transaction_type} - ${data.amount} ${accountData?.currency || 'USD'}`, data);
-
-                  setTradingStats(prev => ({
-                    ...prev,
-                    totalTrades: prev.totalTrades + 1
-                  }));
-                });
-
-                // Obter saldo inicial
-                const balance = await derivWS.current.getBalance();
-                if (balance) {
-                  setAccountData(balance);
-                  setBotStatus(prev => ({
-                    ...prev,
-                    currentBalance: balance.balance,
-                    initialBalance: prev.initialBalance || balance.balance
-                  }));
-                }
-              }
-            }
-          } catch (authError) {
-            console.error('Erro na autorização:', authError);
-            addLog('error', 'Erro ao autorizar conta Deriv');
-          }
-        }
-
-        return true;
-      } else {
+      if (!connected) {
         addLog('error', 'Falha ao conectar ao WebSocket da Deriv');
+        setIsConnecting(false);
         return false;
       }
-    } catch (error: any) {
-      console.error('Erro ao conectar:', error);
-      addLog('error', `Erro de conexão: ${error.message}`);
-      return false;
-    } finally {
+
+      setIsConnected(true);
+      addLog('success', 'Conectado ao WebSocket da Deriv com sucesso');
+
+      // CORREÇÃO CRÍTICA: Autorizar se tiver token
+      if (user?.deriv_connected && currentAccount) {
+        try {
+          addLog('info', 'Obtendo token de autorização...');
+
+          const response = await api.get('/api/auth/deriv/get-token');
+          console.log('🔍 Token response:', {
+            success: response.data.success,
+            hasToken: !!response.data.token,
+            accountId: response.data.account_id
+          });
+
+          if (!response.data.success || !response.data.token) {
+            throw new Error('Token não disponível ou inválido');
+          }
+
+          addLog('info', 'Token obtido, autorizando WebSocket...');
+          const authorized = await derivWS.current.authorize(response.data.token);
+
+          if (!authorized) {
+            throw new Error('Falha na autorização do WebSocket');
+          }
+
+          addLog('success', `Autorizado na conta: ${currentAccount.loginid}`);
+
+          // Subscrever para atualizações de saldo
+          derivWS.current.subscribeBalance('main', (data) => {
+            console.log('📊 Atualização de saldo recebida:', data);
+            setAccountData(data);
+            setBotStatus(prev => ({
+              ...prev,
+              currentBalance: data.balance
+            }));
+            addLog('info', `Saldo atualizado: ${data.balance} ${data.currency}`);
+          });
+
+          // Subscrever para transações
+          derivWS.current.subscribeTransactions('main', (data) => {
+            addLog('trade', `Transação: ${data.transaction_type} - ${data.amount} USD`, data);
+            setTradingStats(prev => ({
+              ...prev,
+              totalTrades: prev.totalTrades + 1
+            }));
+          });
+
+          // CORREÇÃO CRÍTICA: Obter saldo inicial com retry mais robusto
+          addLog('info', 'Obtendo saldo inicial...');
+          let retryCount = 0;
+          const maxRetries = 5;
+
+          const getInitialBalance = async (): Promise<boolean> => {
+            try {
+              const balance = await derivWS.current.getBalance();
+
+              if (!balance) {
+                throw new Error('Resposta de saldo vazia');
+              }
+
+              console.log('✅ Saldo inicial obtido:', balance);
+              setAccountData(balance);
+              setBotStatus(prev => ({
+                ...prev,
+                currentBalance: balance.balance,
+                initialBalance: prev.initialBalance || balance.balance
+              }));
+              addLog('success', `💰 Saldo carregado: ${balance.balance} ${balance.currency}`);
+              toast.success(`Conta conectada! Saldo: ${balance.balance} ${balance.currency}`);
+              return true;
+
+            } catch (balanceError: any) {
+              retryCount++;
+              console.error(`❌ Tentativa ${retryCount}/${maxRetries} falhou:`, balanceError);
+
+              if (retryCount < maxRetries) {
+                const delay = 1000 * retryCount; // Backoff progressivo
+                addLog('info', `Tentando obter saldo novamente em ${delay/1000}s (${retryCount}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return getInitialBalance();
+              } else {
+                addLog('error', 'Falha ao obter saldo após todas as tentativas');
+                toast.error('Não foi possível obter o saldo. Tente reconectar.');
+                return false;
+              }
+            }
+          };
+
+          await getInitialBalance();
+
+        } catch (authError: any) {
+          console.error('❌ Erro crítico na autorização:', authError);
+          const errorMessage = authError.response?.data?.error || authError.message || 'Erro na autorização';
+          addLog('error', `Erro ao autorizar conta Deriv: ${errorMessage}`);
+          toast.error(`Erro na autorização: ${errorMessage}`);
+          setIsConnecting(false);
+          return false;
+        }
+      }
+
       setIsConnecting(false);
+      return true;
+
+    } catch (error: any) {
+      console.error('❌ Erro ao conectar:', error);
+      addLog('error', `Erro de conexão: ${error.message}`);
+      toast.error(`Erro de conexão: ${error.message}`);
+      setIsConnecting(false);
+      return false;
     }
-  }, [isConnected, isConnecting, user, currentAccount, addLog, accountData?.currency]);
+  }, [isConnected, isConnecting, user, currentAccount, addLog]);
 
   /**
    * Desconecta do WebSocket
@@ -530,7 +591,7 @@ const useDerivOperations = (): UseDerivOperationsReturn => {
     reconnectForAccountChange();
   }, [currentAccount?.loginid, isConnected, user?.deriv_connected, addLog]);
 
-  // Auto-conectar quando há dados de conta
+  // Auto-conectar quando há dados de conta - CORRIGIDO
   useEffect(() => {
     const shouldAutoConnect = user?.deriv_connected && currentAccount && !isConnected && !isConnecting;
 
@@ -544,11 +605,27 @@ const useDerivOperations = (): UseDerivOperationsReturn => {
 
     if (shouldAutoConnect) {
       console.log('🔄 useDerivOperations: Iniciando auto-conexão...');
-      connect().then(success => {
-        console.log(success ? '✅ useDerivOperations: Auto-conexão bem-sucedida' : '❌ useDerivOperations: Auto-conexão falhou');
-      });
+
+      // Adicionar delay para garantir que o estado do AuthContext está estável
+      const timer = setTimeout(() => {
+        connect().then(success => {
+          console.log(success ? '✅ useDerivOperations: Auto-conexão bem-sucedida' : '❌ useDerivOperations: Auto-conexão falhou');
+
+          if (!success) {
+            // Retry uma vez se falhar
+            console.log('🔄 useDerivOperations: Tentando reconectar...');
+            setTimeout(() => {
+              connect().catch(err => console.error('❌ Retry failed:', err));
+            }, 2000);
+          }
+        }).catch(err => {
+          console.error('❌ useDerivOperations: Erro na auto-conexão:', err);
+        });
+      }, 500);
+
+      return () => clearTimeout(timer);
     }
-  }, [user?.deriv_connected, currentAccount, isConnected, isConnecting, connect]);
+  }, [user?.deriv_connected, currentAccount, isConnected, isConnecting]);
 
 
   return {
