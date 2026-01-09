@@ -1097,11 +1097,11 @@ router.get('/deriv/callback', async (req, res) => {
             } catch (e) {
               console.error('❌ Erro ao enviar postMessage:', e);
             }
-            console.log('⏰ Fechando janela em 5 segundos...');
+            console.log('⏰ Fechando janela em 500ms...');
             setTimeout(() => {
               console.log('🔒 Fechando janela agora...');
               window.close();
-            }, 5000);
+            }, 500);
           </script>
         </body>
         </html>

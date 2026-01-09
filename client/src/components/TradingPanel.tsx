@@ -458,7 +458,7 @@ const TradingPanel: React.FC = () => {
                     {balanceLoading && <CircularProgress size={16} sx={{ color: '#00d4aa' }} />}
                     <Typography variant="h6" sx={{ color: '#ffffff' }}>
                       {balanceLoading ? 'Carregando...' :
-                       balanceData?.balance ? `${balanceData.balance} ${currentAccount.currency}` :
+                       balanceData?.account?.balance !== undefined ? `${balanceData.account.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currentAccount.currency}` :
                        balanceError ? 'Erro' : '0.00 ' + currentAccount.currency}
                     </Typography>
                   </Box>
