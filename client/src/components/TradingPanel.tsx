@@ -209,6 +209,35 @@ const TradingPanel: React.FC = () => {
     }
   };
 
+  const handleDisconnect = async () => {
+    try {
+      const confirmDisconnect = window.confirm(
+        'Tem certeza que deseja desconectar sua conta Deriv? Você precisará reconectar para usar os bots.'
+      );
+
+      if (!confirmDisconnect) {
+        return;
+      }
+
+      const loadingToastId = toast.loading('🔌 Desconectando conta Deriv...');
+
+      const response = await api.post('/api/auth/deriv/disconnect');
+
+      if (response.data.success) {
+        toast.success('✅ Conta Deriv desconectada com sucesso!', { id: loadingToastId });
+
+        // Atualizar o contexto para refletir desconexão
+        window.location.reload(); // Recarregar a página para limpar estado
+      } else {
+        throw new Error(response.data.error || 'Erro ao desconectar');
+      }
+    } catch (error: any) {
+      console.error('❌ TradingPanel: Erro ao desconectar:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Erro ao desconectar';
+      toast.error(`Erro ao desconectar: ${errorMessage}`);
+    }
+  };
+
 
   const startBot = async (botId: string) => {
     try {
@@ -427,6 +456,15 @@ const TradingPanel: React.FC = () => {
                 disabled={balanceLoading}
               >
                 {balanceLoading ? '🔄 Carregando...' : '🔄 Atualizar Saldo'}
+              </Button>
+
+              <Button
+                variant="tertiary"
+                fullWidth
+                onClick={handleDisconnect}
+                style={{ marginTop: '10px' }}
+              >
+                🔌 Desconectar Deriv
               </Button>
             </CardContent>
           </Card>
