@@ -1934,6 +1934,58 @@ router.post('/deriv/fetch-all-accounts', authenticateToken, async (req, res) => 
   }
 });
 
+// Obter saldo e informações da conta ativa
+router.get('/deriv/balance', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log('💰 GET /deriv/balance: Buscando saldo para userId:', userId);
+
+    // Buscar conta ativa do usuário
+    const accountResult = await query(`
+      SELECT loginid, currency, is_virtual, token, email, fullname
+      FROM deriv_accounts
+      WHERE user_id = $1 AND is_active = true
+      LIMIT 1
+    `, [userId]);
+
+    if (accountResult.rows.length === 0) {
+      console.log('⚠️ Nenhuma conta Deriv ativa encontrada para o usuário');
+      return res.status(404).json({
+        success: false,
+        error: 'Nenhuma conta Deriv encontrada. Por favor, conecte sua conta Deriv primeiro.'
+      });
+    }
+
+    const account = accountResult.rows[0];
+    console.log('✅ Conta ativa encontrada:', {
+      loginid: account.loginid,
+      currency: account.currency,
+      is_virtual: account.is_virtual
+    });
+
+    // Retornar informações da conta
+    res.json({
+      success: true,
+      account: {
+        loginid: account.loginid,
+        currency: account.currency,
+        is_virtual: account.is_virtual,
+        email: account.email,
+        fullname: account.fullname,
+        balance: 0 // TODO: Implementar busca de saldo via WebSocket em tempo real
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao buscar saldo Deriv:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar informações da conta Deriv'
+    });
+  }
+});
+
 // Trocar entre conta Virtual e Real (MÉTODO CORRIGIDO - funciona com um só token)
 router.post('/deriv/switch-account', authenticateToken, async (req, res) => {
   try {
