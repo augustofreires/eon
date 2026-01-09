@@ -324,15 +324,16 @@ const TradingPanel: React.FC = () => {
 
           if (userResponse.data.user?.deriv_connected) {
             console.log('✅ TradingPanel: User Deriv connection confirmed');
-            toast.success('✅ Conexão Deriv realizada com sucesso!', { id: successToastId });
 
-            // O AuthContext já deve ter processado os dados, apenas aguardamos a atualização do estado
-            setTimeout(() => {
-              if (!user?.deriv_connected) {
-                console.log('🔄 TradingPanel: Forçando reload para atualizar estado...');
-                window.location.reload();
-              }
-            }, 2000);
+            // Atualizar contexto do usuário
+            console.log('🔄 TradingPanel: Atualizando contexto do usuário...');
+            updateUser({ deriv_connected: true });
+
+            // Buscar contas Deriv do banco
+            console.log('🔄 TradingPanel: Buscando contas Deriv...');
+            await fetchAccounts('oauth-callback');
+
+            toast.success('✅ Conexão Deriv realizada com sucesso!', { id: successToastId });
 
           } else {
             throw new Error('Conexão OAuth não foi confirmada no servidor');

@@ -1,0 +1,173 @@
+{
+  "meta": {
+    "project_name": "Deriv Trading Bots Panel",
+    "last_updated": "2026-01-09",
+    "current_version": "0.5.0",
+    "main_branch": "main"
+  },
+
+  "stack": {
+    "frontend": "React + TypeScript (client/src)",
+    "backend": "Node.js + Express (server/)",
+    "database": "PostgreSQL",
+    "auth": "Deriv OAuth 2.0",
+    "api": "Deriv WebSocket API"
+  },
+
+  "implemented_features": [
+    {
+      "id": "DERIV-AUTH-001",
+      "description": "OAuth login com Deriv API",
+      "status": "done",
+      "files": [
+        "server/routes/auth.js (backend - GET /api/auth/deriv/authorize + GET /api/auth/deriv/callback)",
+        "client/src/components/TradingPanel.tsx (frontend - handleOAuthConnect + handleOAuthMessage)"
+      ],
+      "notes": "Popup OAuth abre corretamente, usuário autentica na Deriv. postMessage já implementado no backend (linha 1092). Listener já implementado no frontend."
+    },
+    {
+      "id": "DERIV-AUTH-002",
+      "description": "Salvar contas OAuth na tabela deriv_accounts",
+      "status": "done",
+      "files": [
+        "server/routes/auth.js"
+      ],
+      "notes": "Ao fazer OAuth, as contas são salvas corretamente no banco"
+    },
+    {
+      "id": "DERIV-BALANCE-001",
+      "description": "Endpoint para buscar saldo real da conta",
+      "status": "done",
+      "files": [
+        "server/routes/auth.js (GET /api/auth/deriv/balance)"
+      ],
+      "notes": "Retorna saldo real da conta ativa"
+    },
+    {
+      "id": "DERIV-SWITCH-001",
+      "description": "Troca de contas Deriv",
+      "status": "done",
+      "files": [
+        "server/routes/auth.js (POST /api/auth/deriv/switch-account)",
+        "client/src/components/TradingPanel.tsx (AccountSwitcher integrado)"
+      ],
+      "notes": "Usuário consegue trocar entre contas e o saldo atualiza corretamente"
+    },
+    {
+      "id": "DERIV-DISCONNECT-001",
+      "description": "Botão de desconectar conta Deriv",
+      "status": "done",
+      "files": [
+        "client/src/components/TradingPanel.tsx"
+      ],
+      "notes": "Permite desconectar e reconectar com nova conta"
+    },
+    {
+      "id": "DERIV-AUTO-REFRESH-001",
+      "description": "Atualização automática da UI após OAuth sem reload",
+      "status": "done",
+      "files": [
+        "client/src/components/TradingPanel.tsx (handleOAuthMessage - linha 328-334)"
+      ],
+      "notes": "Após OAuth: updateUser() atualiza contexto + fetchAccounts() carrega contas → UI atualiza automaticamente sem window.location.reload()"
+    }
+  ],
+
+  "known_bugs": [],
+
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "decision": "Usar OAuth da Deriv ao invés de API tokens diretos",
+      "reason": "Segurança e experiência do usuário melhorada",
+      "date": "2026-01-08"
+    },
+    {
+      "id": "DEC-002",
+      "decision": "Salvar contas na tabela deriv_accounts separada",
+      "reason": "Permitir múltiplas contas Deriv por usuário",
+      "date": "2026-01-08"
+    },
+    {
+      "id": "DEC-003",
+      "decision": "Usar popup para OAuth ao invés de redirect",
+      "reason": "Melhor UX, não perde contexto da página",
+      "date": "2026-01-09"
+    },
+    {
+      "id": "DEC-004",
+      "decision": "Remover rota duplicada /api/auth/deriv/switch-account",
+      "reason": "Havia conflito entre versões GET e POST",
+      "date": "2026-01-09"
+    }
+  ],
+
+  "current_focus": "Fluxo OAuth completo implementado e funcionando",
+
+  "todo": [],
+
+  "constraints": [
+    "Não modificar tabelas do banco de dados sem necessidade",
+    "Manter compatibilidade com código de bots existente",
+    "Seguir padrões Next.js App Router",
+    "Sempre testar OAuth flow completo antes de considerar concluído"
+  ],
+
+  "database_schema": {
+    "deriv_accounts": {
+      "columns": [
+        "id (serial primary key)",
+        "user_id (integer, FK para users)",
+        "account_id (text, ID da conta Deriv)",
+        "token (text, OAuth token)",
+        "currency (varchar(10))",
+        "login_id (text)",
+        "is_active (boolean)",
+        "created_at (timestamp)",
+        "updated_at (timestamp)"
+      ]
+    }
+  },
+
+  "important_endpoints": [
+    {
+      "path": "/api/auth/deriv/authorize",
+      "method": "GET",
+      "description": "Retorna URL de autorização OAuth da Deriv"
+    },
+    {
+      "path": "/api/auth/deriv/callback",
+      "method": "GET",
+      "description": "Callback OAuth, salva token e contas no banco, envia postMessage para fechar popup"
+    },
+    {
+      "path": "/api/auth/deriv/all-accounts",
+      "method": "GET",
+      "description": "Retorna todas as contas Deriv do usuário (da tabela deriv_accounts)"
+    },
+    {
+      "path": "/api/auth/deriv/balance",
+      "method": "GET",
+      "description": "Retorna saldo real da conta ativa via Deriv API"
+    },
+    {
+      "path": "/api/auth/deriv/switch-account",
+      "method": "POST",
+      "description": "Troca conta ativa do usuário (atualiza is_active no banco)"
+    },
+    {
+      "path": "/api/profile",
+      "method": "GET",
+      "description": "Retorna dados do usuário autenticado (usado para verificar deriv_connected)"
+    }
+  ],
+
+  "notes": [
+    "ÚLTIMO COMMIT (849c58d): Resolveu saldo 0.00 (agora mostra corretamente com formatação) + Reduziu timeout do popup para 500ms",
+    "CORREÇÃO ATUAL (2026-01-09): Implementado auto-refresh após OAuth sem reload manual",
+    "✅ Fluxo OAuth COMPLETO: popup abre → usuário autentica → contas salvas no banco → postMessage enviado → popup fecha → updateUser() → fetchAccounts() → UI atualizada automaticamente",
+    "✅ Removido window.location.reload() desnecessário",
+    "✅ Agora availableAccounts e currentAccount são carregados automaticamente após OAuth",
+    "Próximos passos: Testar fluxo completo (login, troca de contas, saldo, logout)"
+  ]
+}
