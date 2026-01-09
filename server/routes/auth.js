@@ -1297,6 +1297,55 @@ router.post('/deriv/process-callback', authenticateToken, async (req, res) => {
         is_virtual: primaryAccountData.is_virtual
       });
 
+      // ✅ CORREÇÃO CRÍTICA: Salvar contas na tabela deriv_accounts
+      console.log(`💾 Salvando ${enrichedAccounts.length} contas na tabela deriv_accounts...`);
+
+      // Desativar todas as contas antigas do usuário
+      await query(
+        'UPDATE deriv_accounts SET is_active = FALSE WHERE user_id = $1',
+        [userId]
+      );
+
+      // Salvar cada conta
+      let savedCount = 0;
+      for (const account of enrichedAccounts) {
+        try {
+          await query(`
+            INSERT INTO deriv_accounts (
+              user_id, loginid, token, currency, is_virtual,
+              email, fullname, is_active
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (user_id, loginid)
+            DO UPDATE SET
+              token = $3,
+              currency = $4,
+              is_virtual = $5,
+              email = $6,
+              fullname = $7,
+              is_active = $8,
+              updated_at = CURRENT_TIMESTAMP
+          `, [
+            userId,
+            account.loginid,
+            account.token,
+            account.currency || 'USD',
+            account.is_virtual || false,
+            accountData.email || '',
+            accountData.fullname || '',
+            account.loginid === primaryAccountData.loginid // Conta primária fica ativa
+          ]);
+
+          savedCount++;
+          console.log(`  ✅ Conta ${savedCount}/${enrichedAccounts.length} salva: ${account.loginid}`);
+
+        } catch (saveError) {
+          console.error(`  ❌ Erro ao salvar conta ${account.loginid}:`, saveError);
+        }
+      }
+
+      console.log(`✅ ${savedCount} contas salvas na tabela deriv_accounts!`);
+
       res.json({
         success: true,
         message: 'Conta Deriv conectada com sucesso',
