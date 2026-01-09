@@ -748,7 +748,7 @@ router.get('/deriv/callback', async (req, res) => {
               if (window.opener) {
                 console.log('✅ Window.opener encontrado, enviando erro...');
                 window.opener.postMessage({
-                  type: 'deriv_oauth_error',
+                  type: 'deriv-oauth-error',
                   error: '${errorMessage}',
                   details: ${details ? JSON.stringify(details) : 'null'}
                 }, '*');
@@ -1076,7 +1076,7 @@ router.get('/deriv/callback', async (req, res) => {
               if (window.opener) {
                 console.log('✅ Window.opener encontrado, enviando postMessage...');
                 const messageData = {
-                  type: 'deriv_oauth_success',
+                  type: 'deriv-oauth-callback',
                   data: {
                     token: '${token}',
                     accountId: '${validatedAccountId}',
@@ -1135,7 +1135,7 @@ router.get('/deriv/callback', async (req, res) => {
           try {
             if (window.opener) {
               window.opener.postMessage({
-                type: 'deriv_oauth_error',
+                type: 'deriv-oauth-error',
                 error: 'Erro interno do servidor'
               }, '*');
             }
