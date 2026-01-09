@@ -163,11 +163,12 @@
   ],
 
   "notes": [
-    "ÚLTIMO COMMIT (849c58d): Resolveu saldo 0.00 (agora mostra corretamente com formatação) + Reduziu timeout do popup para 500ms",
-    "CORREÇÃO ATUAL (2026-01-09): Implementado auto-refresh após OAuth sem reload manual",
+    "ÚLTIMO COMMIT (a97e27e): Auto-refresh após OAuth sem reload manual",
+    "✅ DEPLOY EM PRODUÇÃO (2026-01-09): Mudanças aplicadas na VPS (https://app.zapconverse.com)",
     "✅ Fluxo OAuth COMPLETO: popup abre → usuário autentica → contas salvas no banco → postMessage enviado → popup fecha → updateUser() → fetchAccounts() → UI atualizada automaticamente",
     "✅ Removido window.location.reload() desnecessário",
     "✅ Agora availableAccounts e currentAccount são carregados automaticamente após OAuth",
-    "Próximos passos: Testar fluxo completo (login, troca de contas, saldo, logout)"
+    "✅ PM2 restartado: eon-pro-server (PID 40906) rodando na porta 5001",
+    "Testar em: https://app.zapconverse.com/operations → Conectar Deriv → Verificar se contas aparecem automaticamente"
   ]
 }
