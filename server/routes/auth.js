@@ -389,44 +389,58 @@ router.post('/login', [
   body('password').isLength({ min: 6 })
 ], async (req, res) => {
   try {
+    console.log('🔐 Login attempt:', { email: req.body.email });
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { email, password } = req.body;
 
     // Buscar usuário
+    console.log('📊 Querying user from database...');
     const result = await query(
       'SELECT id, email, password_hash, name, role, status FROM users WHERE email = $1',
       [email]
     );
 
     if (result.rows.length === 0) {
+      console.log('❌ User not found:', email);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
     const user = result.rows[0];
+    console.log('✅ User found:', { email: user.email, role: user.role, status: user.status });
 
     // Permitir login para admin e cliente
     if (user.role !== 'admin' && user.role !== 'client') {
+      console.log('❌ Invalid role:', user.role);
       return res.status(403).json({ error: 'Acesso negado. Role inválido.' });
     }
 
     // Verificar status
     if (user.status !== 'active') {
+      console.log('❌ Inactive account:', user.status);
       return res.status(403).json({ error: 'Conta suspensa ou inativa' });
     }
 
     // Verificar senha
+    console.log('🔑 Comparing password... Hash length:', user.password_hash?.length);
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    console.log('🔑 Password valid:', isValidPassword);
+
     if (!isValidPassword) {
+      console.log('❌ Invalid password for:', email);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
     // Gerar token
+    console.log('🎫 Generating token for user:', user.id);
     const token = generateToken(user.id);
 
+    console.log('✅ Login successful:', email);
     res.json({
       message: 'Login realizado com sucesso',
       token,
@@ -439,7 +453,10 @@ router.post('/login', [
     });
 
   } catch (error) {
-    console.error('Erro no login admin:', error);
+    console.error('❌ ERRO COMPLETO NO LOGIN:');
+    console.error('Message:', error.message);
+    console.error('Stack:', error.stack);
+    console.error('Full error:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -581,13 +598,45 @@ router.get('/verify', async (req, res) => {
       return res.status(403).json({ error: 'Conta suspensa ou inativa' });
     }
 
+    // ✅ CORREÇÃO: Buscar dados da conexão Deriv da conta ativa
+    let derivData = {};
+    try {
+      const derivResult = await query(
+        `SELECT loginid, email, fullname, currency, is_virtual, token
+         FROM deriv_accounts
+         WHERE user_id = $1 AND is_active = true
+         LIMIT 1`,
+        [user.id]
+      );
+
+      if (derivResult.rows.length > 0) {
+        const derivAccount = derivResult.rows[0];
+        derivData = {
+          deriv_connected: true,
+          deriv_account_id: derivAccount.loginid,
+          deriv_email: derivAccount.email,
+          deriv_fullname: derivAccount.fullname,
+          deriv_currency: derivAccount.currency,
+          deriv_is_virtual: derivAccount.is_virtual,
+          deriv_access_token: derivAccount.token
+        };
+        console.log('✅ /verify: Dados Deriv incluídos na resposta:', derivAccount.loginid);
+      } else {
+        console.log('ℹ️ /verify: Nenhuma conta Deriv ativa encontrada para o usuário');
+      }
+    } catch (derivError) {
+      console.error('⚠️ /verify: Erro ao buscar dados Deriv (não crítico):', derivError);
+      // Continuar sem dados Deriv em caso de erro
+    }
+
     res.json({
       valid: true,
       user: {
         id: user.id,
         email: user.email,
         name: user.name || user.email.split('@')[0],
-        role: user.role
+        role: user.role,
+        ...derivData  // Incluir dados Deriv se existirem
       }
     });
 
