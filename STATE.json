@@ -163,12 +163,11 @@
   ],
 
   "notes": [
-    "ÚLTIMO COMMIT (a97e27e): Auto-refresh após OAuth sem reload manual",
-    "✅ DEPLOY EM PRODUÇÃO (2026-01-09): Mudanças aplicadas na VPS (https://app.zapconverse.com)",
-    "✅ Fluxo OAuth COMPLETO: popup abre → usuário autentica → contas salvas no banco → postMessage enviado → popup fecha → updateUser() → fetchAccounts() → UI atualizada automaticamente",
-    "✅ Removido window.location.reload() desnecessário",
-    "✅ Agora availableAccounts e currentAccount são carregados automaticamente após OAuth",
-    "✅ PM2 restartado: eon-pro-server (PID 40906) rodando na porta 5001",
-    "Testar em: https://app.zapconverse.com/operations → Conectar Deriv → Verificar se contas aparecem automaticamente"
+    "ÚLTIMO COMMIT (723d745): Corrigir type do postMessage OAuth",
+    "🐛 BUG CRÍTICO CORRIGIDO: Backend enviava 'deriv_oauth_success', frontend esperava 'deriv-oauth-callback'",
+    "✅ CORREÇÃO APLICADA EM PRODUÇÃO (2026-01-09 17:55): PM2 restartado (PID 42126)",
+    "✅ PostMessage agora usa type correto: 'deriv-oauth-callback' (sucesso) e 'deriv-oauth-error' (erro)",
+    "✅ Fluxo OAuth COMPLETO: popup abre → usuário autentica → contas salvas no banco → postMessage RECONHECIDO → popup fecha em 500ms → updateUser() → fetchAccounts() → UI atualizada automaticamente",
+    "Testar em: https://app.zapconverse.com/operations → Conectar Deriv → Popup DEVE fechar automaticamente → Contas aparecem sem reload"
   ]
 }
