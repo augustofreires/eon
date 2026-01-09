@@ -127,3 +127,55 @@ redis_data/
 
 # Production secrets
 .env.production
+.env.vps
+server/.env.production
+server/.env.vps
+
+# ====================================
+# Arquivos Temporários (Limpeza 2026)
+# ====================================
+
+# Scripts de deploy/debug expect
+*.exp
+
+# Backups tar.gz
+*.tar.gz
+
+# Scripts Python temporários
+debug-*.py
+fix-*.py
+test-*.py
+execute-*.py
+diagnose-*.py
+*-auth-*.py
+*-fix.py
+
+# Scripts bash temporários
+complete-*.sh
+fix-*.sh
+simple-*.sh
+deploy-*.sh
+setup-*.sh
+
+# Arquivos JS temporários
+debug-*.js
+useful-links-*.js
+create-*.js
+fix-*.js
+
+# JSON de logs
+*_response.json
+debug-*.json
+
+# Diretórios temporários
+_temp_cleanup/
+_backups/
+_old/
+
+# Documentação temporária e duplicada
+OAUTH_DEBUGGING_*.md
+OAUTH_FIXES_*.md
+OAUTH_DERIV_*.md
+DERIV_OAUTH_*.md
+DEPLOY_*.md
+*-improved.*

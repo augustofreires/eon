@@ -23,6 +23,19 @@ const OperationsMinimal: React.FC = () => {
   const connectToDeriv = async () => {
     try {
       console.log('🚀 OAuth: Starting Deriv connection process...');
+
+      // CORREÇÃO: Verificar se o token JWT existe antes de tentar conectar
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('❌ OAuth: Token JWT não encontrado no localStorage');
+        toast.error('❌ Sessão expirada. Faça login novamente.');
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1500);
+        return;
+      }
+      console.log('✅ OAuth: Token JWT encontrado, prosseguindo...');
+
       setConnecting(true);
 
       // Show loading toast for immediate feedback
