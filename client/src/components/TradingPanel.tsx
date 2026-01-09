@@ -20,7 +20,7 @@ import {
 // Importar componentes oficiais da Deriv
 import { Button } from '@deriv-com/quill-ui';
 import { useAuth } from '../contexts/AuthContext';
-import axios from 'axios';
+import api from '../services/api';
 import toast from 'react-hot-toast';
 
 interface BotConfig {
@@ -136,7 +136,7 @@ const TradingPanel: React.FC = () => {
   const loadUserBots = async () => {
     try {
       // Buscar bots disponíveis para o cliente (mesmos do /bots)
-      const response = await axios.get('/api/bots');
+      const response = await api.get('/api/bots');
       setBots(response.data || []);
     } catch (error) {
       console.error('Erro ao carregar bots:', error);
@@ -155,7 +155,7 @@ const TradingPanel: React.FC = () => {
         retryCount
       });
 
-      const response = await axios.get('/api/auth/deriv/balance', {
+      const response = await api.get('/api/auth/deriv/balance', {
         timeout: 10000 // 10 segundos de timeout
       });
 
@@ -213,7 +213,7 @@ const TradingPanel: React.FC = () => {
   const startBot = async (botId: string) => {
     try {
       setLoading(true);
-      const response = await axios.post(`/api/bots/${botId}/start`, {
+      const response = await api.post(`/api/bots/${botId}/start`, {
         accountId: currentAccount?.loginid
       });
 
@@ -231,7 +231,7 @@ const TradingPanel: React.FC = () => {
   const stopBot = async (botId: string) => {
     try {
       setLoading(true);
-      const response = await axios.post(`/api/bots/${botId}/stop`);
+      const response = await api.post(`/api/bots/${botId}/stop`);
 
       if (response.data.success) {
         toast.success('Bot parado!');
@@ -269,7 +269,7 @@ const TradingPanel: React.FC = () => {
           await new Promise(resolve => setTimeout(resolve, 1000));
 
           // Verificar se a conexão foi estabelecida consultando o backend
-          const userResponse = await axios.get('/api/profile');
+          const userResponse = await api.get('/api/profile');
 
           if (userResponse.data.user?.deriv_connected) {
             console.log('✅ TradingPanel: User Deriv connection confirmed');
@@ -310,7 +310,7 @@ const TradingPanel: React.FC = () => {
       const loadingToastId = toast.loading('🔄 Iniciando conexão com Deriv...');
 
       console.log('📱 TradingPanel: Requesting authorization URL...');
-      const response = await axios.get('/api/auth/deriv/authorize');
+      const response = await api.get('/api/auth/deriv/authorize');
 
       console.log('📄 TradingPanel: API Response:', response.data);
 
