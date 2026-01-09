@@ -1390,14 +1390,30 @@ router.post('/deriv/disconnect', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
 
+    console.log('🔌 Desconectando conta Deriv para usuário:', userId);
+
+    // 1. Desativar todas as contas na tabela deriv_accounts
+    await query(
+      'UPDATE deriv_accounts SET is_active = FALSE WHERE user_id = $1',
+      [userId]
+    );
+    console.log('  ✅ Contas desativadas na tabela deriv_accounts');
+
+    // 2. Limpar dados Deriv na tabela users
     await query(`
-      UPDATE users 
-      SET deriv_access_token = NULL, 
-          deriv_account_id = NULL, 
+      UPDATE users
+      SET deriv_access_token = NULL,
+          deriv_account_id = NULL,
           deriv_connected = false,
+          deriv_email = NULL,
+          deriv_currency = NULL,
+          deriv_is_virtual = NULL,
+          deriv_fullname = NULL,
+          deriv_accounts_tokens = NULL,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `, [userId]);
+    console.log('  ✅ Dados Deriv limpos na tabela users');
 
     res.json({
       success: true,
@@ -1405,8 +1421,11 @@ router.post('/deriv/disconnect', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Erro ao desconectar Deriv:', error);
-    res.status(500).json({ error: 'Erro interno do servidor' });
+    console.error('❌ Erro ao desconectar Deriv:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno do servidor'
+    });
   }
 });
 
@@ -2013,7 +2032,77 @@ router.get('/deriv/balance', authenticateToken, async (req, res) => {
       is_virtual: account.is_virtual
     });
 
-    // Retornar informações da conta
+    // Buscar saldo real via WebSocket
+    let currentBalance = 0;
+    try {
+      console.log('💰 Buscando saldo via WebSocket...');
+      const WebSocket = require('ws');
+      const ws = new WebSocket(`wss://ws.derivws.com/websockets/v3?app_id=${process.env.DERIV_APP_ID || '82349'}`);
+
+      const balancePromise = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          console.log('⏱️ Timeout ao buscar saldo, usando 0');
+          resolve(0);
+        }, 5000);
+
+        ws.onopen = () => {
+          console.log('🔗 WebSocket conectado, autorizando...');
+          ws.send(JSON.stringify({
+            authorize: account.token,
+            req_id: 1
+          }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const response = JSON.parse(event.data);
+            console.log('📨 Resposta WebSocket:', { msg_type: response.msg_type, req_id: response.req_id });
+
+            if (response.error) {
+              console.error('❌ Erro WebSocket:', response.error);
+              clearTimeout(timeout);
+              ws.close();
+              resolve(0);
+              return;
+            }
+
+            if (response.authorize && response.req_id === 1) {
+              console.log('✅ Autorizado, solicitando saldo...');
+              ws.send(JSON.stringify({
+                balance: 1,
+                subscribe: 0,
+                req_id: 2
+              }));
+            } else if (response.balance && response.req_id === 2) {
+              const balance = response.balance.balance || 0;
+              console.log('💰 Saldo recebido:', balance, account.currency);
+              clearTimeout(timeout);
+              ws.close();
+              resolve(balance);
+            }
+          } catch (parseError) {
+            console.error('❌ Erro ao processar resposta:', parseError);
+            clearTimeout(timeout);
+            ws.close();
+            resolve(0);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('❌ Erro WebSocket:', error);
+          clearTimeout(timeout);
+          resolve(0);
+        };
+      });
+
+      currentBalance = await balancePromise;
+    } catch (balanceError) {
+      console.error('⚠️ Erro ao obter saldo via WebSocket:', balanceError);
+      currentBalance = 0;
+    }
+
+    // Retornar informações da conta com saldo real
     res.json({
       success: true,
       account: {
@@ -2022,7 +2111,7 @@ router.get('/deriv/balance', authenticateToken, async (req, res) => {
         is_virtual: account.is_virtual,
         email: account.email,
         fullname: account.fullname,
-        balance: 0 // TODO: Implementar busca de saldo via WebSocket em tempo real
+        balance: currentBalance
       }
     });
 

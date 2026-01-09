@@ -33,7 +33,7 @@ interface BotConfig {
 }
 
 const TradingPanel: React.FC = () => {
-  const { user, availableAccounts, currentAccount, switchAccount } = useAuth();
+  const { user, availableAccounts, currentAccount, switchAccount, updateUser, fetchAccounts } = useAuth();
   const [bots, setBots] = useState<BotConfig[]>([]);
   const [selectedBot, setSelectedBot] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -224,10 +224,32 @@ const TradingPanel: React.FC = () => {
       const response = await api.post('/api/auth/deriv/disconnect');
 
       if (response.data.success) {
-        toast.success('✅ Conta Deriv desconectada com sucesso!', { id: loadingToastId });
+        console.log('✅ Conta Deriv desconectada com sucesso');
 
-        // Atualizar o contexto para refletir desconexão
-        window.location.reload(); // Recarregar a página para limpar estado
+        // Atualizar o estado do usuário no AuthContext
+        updateUser({
+          deriv_connected: false,
+          deriv_account_id: undefined,
+          deriv_access_token: undefined,
+          deriv_email: undefined,
+          deriv_currency: undefined,
+          deriv_is_virtual: undefined,
+          deriv_fullname: undefined
+        });
+
+        // Limpar lista de contas disponíveis
+        try {
+          await fetchAccounts('disconnect');
+        } catch (fetchError) {
+          console.log('ℹ️ Não há contas para buscar após desconexão');
+        }
+
+        // Limpar estados locais
+        setBalanceData(null);
+        setBalanceError(null);
+        setBots([]);
+
+        toast.success('✅ Conta Deriv desconectada com sucesso!', { id: loadingToastId });
       } else {
         throw new Error(response.data.error || 'Erro ao desconectar');
       }
